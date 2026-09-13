@@ -34,31 +34,31 @@ class TestAgentParsing(unittest.TestCase):
         cls.bot = _load_bot_module()
         # В тестовой среде SANDBOX_COMMAND может быть пуст (нет config.env).
         # Задаём триггер явно, чтобы тестировать разбор @helpbot (см. config).
-        cls.bot.AGENT_PREFIX = "@helpbot"
+        cls.bot.SANDBOX_PREFIX = "@helpbot"
 
-    def test_is_agent_message_true(self):
-        self.assertTrue(self.bot._is_agent_message("@helpbot"))
-        self.assertTrue(self.bot._is_agent_message("@helpbot курс доллара"))
-        self.assertTrue(self.bot._is_agent_message("  @helpbot /status"))
+    def test_is_sandbox_message_true(self):
+        self.assertTrue(self.bot._is_sandbox_message("@helpbot"))
+        self.assertTrue(self.bot._is_sandbox_message("@helpbot курс доллара"))
+        self.assertTrue(self.bot._is_sandbox_message("  @helpbot /status"))
 
-    def test_is_agent_message_false(self):
+    def test_is_sandbox_message_false(self):
         # Не путать с похожими строками и старым /agent
-        self.assertFalse(self.bot._is_agent_message("@helpbotxyz"))
-        self.assertFalse(self.bot._is_agent_message("@helpbotfoo bar"))
-        self.assertFalse(self.bot._is_agent_message("просто текст"))
-        self.assertFalse(self.bot._is_agent_message("/status"))
-        self.assertFalse(self.bot._is_agent_message("/agent"))
-        self.assertFalse(self.bot._is_agent_message(""))
+        self.assertFalse(self.bot._is_sandbox_message("@helpbotxyz"))
+        self.assertFalse(self.bot._is_sandbox_message("@helpbotfoo bar"))
+        self.assertFalse(self.bot._is_sandbox_message("просто текст"))
+        self.assertFalse(self.bot._is_sandbox_message("/status"))
+        self.assertFalse(self.bot._is_sandbox_message("/agent"))
+        self.assertFalse(self.bot._is_sandbox_message(""))
 
-    def test_strip_agent_prefix(self):
+    def test_strip_sandbox_prefix(self):
         # Срезаем @helpbot и ВСЕ пробелы после него
-        self.assertEqual(self.bot._strip_agent_prefix("@helpbot курс"), "курс")
-        self.assertEqual(self.bot._strip_agent_prefix("@helpbot /status"), "/status")
-        self.assertEqual(self.bot._strip_agent_prefix("@helpbot   много пробелов"), "много пробелов")
-        self.assertEqual(self.bot._strip_agent_prefix("@helpbot\tтаб"), "таб")
+        self.assertEqual(self.bot._strip_sandbox_prefix("@helpbot курс"), "курс")
+        self.assertEqual(self.bot._strip_sandbox_prefix("@helpbot /status"), "/status")
+        self.assertEqual(self.bot._strip_sandbox_prefix("@helpbot   много пробелов"), "много пробелов")
+        self.assertEqual(self.bot._strip_sandbox_prefix("@helpbot\tтаб"), "таб")
         # @helpbot без хвоста → пустая строка
-        self.assertEqual(self.bot._strip_agent_prefix("@helpbot"), "")
-        self.assertEqual(self.bot._strip_agent_prefix("@helpbot   "), "")
+        self.assertEqual(self.bot._strip_sandbox_prefix("@helpbot"), "")
+        self.assertEqual(self.bot._strip_sandbox_prefix("@helpbot   "), "")
 
 
 class _FakeMedia:

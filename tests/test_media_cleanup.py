@@ -114,7 +114,7 @@ class TestClearMedia(unittest.TestCase):
             self.bot._reply = fake_reply
 
             async def run():
-                await self.bot._clear_media(None, str(root), agent=False, root=str(root))
+                await self.bot._clear_media(None, str(root), sandbox=False, root=str(root))
             asyncio.run(run())
 
             self.assertEqual(len(deleted), 1)
@@ -123,6 +123,81 @@ class TestClearMedia(unittest.TestCase):
             self.assertEqual(mode, "trash")
             self.assertIn("2", seen["msg"])  # 2 файла
             self.assertIn("в корзину", seen["msg"])
+
+    def test_silent_no_dir_no_reply(self):
+        # /clear при отсутствии каталога вложений: silent=True → никакого ответа.
+        import tempfile, asyncio
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            seen = {}
+            async def fake_reply(message_, text, *a, **k):
+                seen["msg"] = text
+            self.bot._reply = fake_reply
+            async def run():
+                await self.bot._clear_media(None, str(root), sandbox=False, root=str(root), silent=True)
+            asyncio.run(run())
+            self.assertNotIn("msg", seen)  # ответа быть не должно
+
+    def test_silent_empty_dir_deleted(self):
+        # /clear при пустом каталоге: silent=True → каталог удаляется + сообщение.
+        import tempfile, asyncio
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            media = root / ".claude_tg_bot_media"
+            media.mkdir()
+            deleted = []
+            self.bot._delete_path = lambda p, mode="": deleted.append((p, mode))
+            seen = {}
+            async def fake_reply(message_, text, *a, **k):
+                seen["msg"] = text
+            self.bot._reply = fake_reply
+            async def run():
+                await self.bot._clear_media(None, str(root), sandbox=False, root=str(root), silent=True)
+            asyncio.run(run())
+            self.assertEqual(len(deleted), 1)      # пустой каталог удалён
+            self.assertEqual(deleted[0][0], media)
+            self.assertIn("пуст", seen["msg"])     # сообщение про удаление пустого каталога
+
+
+class TestMediaSize(unittest.TestCase):
+    """_media_size: считает файлы/объём скачанных вложений, ничего не удаляя."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.bot = _load_bot_module()
+
+    def test_reports_count_and_size(self):
+        import tempfile, asyncio
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            media = root / ".claude_tg_bot_media"
+            media.mkdir()
+            (media / "a.jpg").write_bytes(b"x" * 1024)
+            (media / "b.mp4").write_bytes(b"y" * 2048)
+
+            seen = {}
+            async def fake_reply(message_, text, *a, **k):
+                seen["msg"] = text
+            self.bot._reply = fake_reply
+
+            async def run():
+                await self.bot._media_size(None, str(root))
+            asyncio.run(run())
+
+            self.assertIn("2", seen["msg"])       # 2 файла
+            self.assertIn("3.0 КБ", seen["msg"])  # 1+2 = 3 КБ
+            self.assertNotIn("Удалено", seen["msg"])  # /mediasize ничего не удаляет
+
+    def test_empty_reports_none(self):
+        import tempfile, asyncio
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            seen = {}
+            async def fake_reply(message_, text, *a, **k):
+                seen["msg"] = text
+            self.bot._reply = fake_reply
+            asyncio.run(self.bot._media_size(None, str(root)))
+            self.assertIn("Нет скачанных вложений", seen["msg"])
 
 
 class TestClearMediaRouting(unittest.TestCase):
@@ -150,11 +225,11 @@ class TestClearMediaRouting(unittest.TestCase):
         bot = self.bot
         bot._allowed = lambda uid, cid: True
         bot._is_allowed_user = lambda uid: True
-        bot._is_agent_message = lambda t: False
+        bot._is_sandbox_message = lambda t: False
         bot._author = lambda m: 777
         routed = []
-        async def fake_on_command(client, message, text, agent=False): routed.append(("command", text))
-        async def fake_on_chat(client, message, text, agent=False): routed.append(("chat", text))
+        async def fake_on_command(client, message, text, sandbox=False): routed.append(("command", text))
+        async def fake_on_chat(client, message, text, sandbox=False): routed.append(("chat", text))
         bot.on_command = fake_on_command
         bot.on_chat = fake_on_chat
         asyncio.run(bot.on_all_message(None, self._msg("/clearmedia")))

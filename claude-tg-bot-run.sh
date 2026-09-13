@@ -53,19 +53,19 @@ if [ -z "$PYTHON" ]; then
 fi
 echo "==> Python: $PYTHON ($("$PYTHON" -c 'import sys; print(".".join(map(str,sys.version_info[:3])))'))"
 
-# Корень проектов берём из настроек (config.env -> PROJECTS_ROOT),
-# а НЕ директорию запуска скрипта. Fallback — $DIR, если конфига ещё нет.
-#
 # config.env ищется в двух местах (по приоритету, как в config.py):
 #   1. ~/.claude-tg-bot/config.env  — каталог, где лежит папка sandbox;
 #   2. <каталог скрипта>/config.env  — рядом с claude-tg-bot-run.sh.
+# Корень проектов (PROJECTS_ROOT) и каталог песочницы (SANDBOX_ROOT) печатает
+# сам бот в main — сразу после config.env, чтобы они шли подряд.
 CONFIG_ENV="${HOME}/.claude-tg-bot/config.env"
 if [ ! -f "$CONFIG_ENV" ]; then
     CONFIG_ENV="$DIR/config.env"
 fi
 
-PROJECTS_ROOT="$(grep -E '^PROJECTS_ROOT=' "$CONFIG_ENV" 2>/dev/null | cut -d= -f2- || true)"
-echo "==> Корень проектов (PROJECTS_ROOT): ${PROJECTS_ROOT:-$DIR}"
+# Путь к конфигу показываем первым — он определяет и корень проектов, и песочницу.
+# Корень проектов и каталог песочницы печатает сам бот в main (сразу после config.env).
+echo "==> config.env: $CONFIG_ENV"
 
 # --- 1. Создаём venv выбранным Python, либо пересоздаём, если он старой версии.
 # ---------------------------------------------------------------------------
@@ -111,7 +111,6 @@ if [ ! -f "$CONFIG_ENV" ]; then
     echo "   cp config.env.example config.env"
     exit 1
 else
-    echo "==> config.env: $CONFIG_ENV"
 
     # Плейсхолдеры, которые надо обязательно заменить.
     # Проверяем ЦЕЛИКОМ строки вида КЛЮЧ=ПЛЕЙСХОЛДЕР (по якорям ^ и $),
