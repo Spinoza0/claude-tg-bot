@@ -33,14 +33,13 @@ from pyrogram.types import Message
 if __package__ and __package__ != "__main__":
     from . import config
     from .claude_runner import format_command_hint, run_claude
-    from .session import SessionStore, is_safe_project_name
+    from .session import SessionStore, is_safe_project_name, has_session
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import config  # noqa: E402
     from claude_runner import format_command_hint, run_claude  # noqa: E402
-    from session import SessionStore, is_safe_project_name  # noqa: E402
+    from session import SessionStore, is_safe_project_name, has_session  # noqa: E402
 
-# Глобальное хранилище состояний
 store = SessionStore()
 
 # ---------------------------------------------------------------------------
@@ -153,7 +152,6 @@ def acquire_single_instance() -> bool:
         print(f"⚠️  Бот уже запускается (lock-файл {_LOCK_FILE.name}). "
               "Второй экземпляр не запускается.")
         return False
-    # Lock получен нами — запланируем автоудаление через 2 с.
     _schedule_lock_expiry()
 
     # Затем проверяем процессы: если бот уже давно работает, не стартуем.
@@ -174,7 +172,6 @@ _active_tasks: set["asyncio.Task"] = set()
 
 
 def _is_allowed_user(user_id: int) -> bool:
-    """Разрешён ли отправитель (ALLOWED_USERS)."""
     return user_id in config.ALLOWED_USERS
 
 
@@ -198,7 +195,7 @@ def _allowed(user_id: int, chat_id: int) -> bool:
     Бот под твоей учёткой не должен отвечать везде, где ты пишешь.
     Обычные сообщения требуют и разрешённого юзера, и разрешённого чата
     (см. _is_allowed_chat). Для @helpbot чат НЕ ограничивается — только юзер
-    (см. on_agent).
+    (см. on_sandbox).
     """
     return _is_allowed_user(user_id) and _is_allowed_chat(user_id, chat_id)
 
@@ -334,7 +331,6 @@ def _friendly(record: str) -> str:
 
 
 def _print_status(state: str, detail: str = "") -> str:
-    """Одна строка статуса в консоль. Возвращает показанное состояние."""
     if state == "ok":
         emoji, color, word = "🟢", "\033[32m", "Работаю"
         body = ""  # в норме текст не нужен — только статус
@@ -494,46 +490,46 @@ def _fmt_bytes(n: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Запуск агента «в любом чате» по строке-триггеру из конфига (SANDBOX_COMMAND)
+# Запуск песочницы «в любом чате» по строке-триггеру из конфига (SANDBOX_COMMAND)
 # ---------------------------------------------------------------------------
 
-# Строка-триггер запуска агента. Берётся из config.SANDBOX_COMMAND (по умолчанию
+# Строка-триггер запуска песочницы. Берётся из config.SANDBOX_COMMAND (по умолчанию
 # "@helpbot" — упоминание бота). Сообщение обязано начинаться с неё, дальше
 # пробел + команда/текст (с картинкой или без).
-AGENT_PREFIX = config.SANDBOX_COMMAND
+SANDBOX_PREFIX = config.SANDBOX_COMMAND
 
 
-def _is_agent_message(text: str) -> bool:
+def _is_sandbox_message(text: str) -> bool:
     """Начинается ли сообщение с триггера SANDBOX_COMMAND (с границей слова).
 
     Требуем, чтобы после триггера шёл пробел или конец строки — чтобы не
     путать с похожими строками (@helpbotxyz и т.п.). Пустой триггер считаем
-    «не агент-сообщение» (на практике SANDBOX_COMMAND всегда непустой — дефолт
+    «не для песочницы» (на практике SANDBOX_COMMAND всегда непустой — дефолт
     @helpbot, см. config).
     """
-    if not AGENT_PREFIX:
+    if not SANDBOX_PREFIX:
         return False
     t = text.lstrip()
-    if not t.startswith(AGENT_PREFIX):
+    if not t.startswith(SANDBOX_PREFIX):
         return False
-    tail = t[len(AGENT_PREFIX):]
+    tail = t[len(SANDBOX_PREFIX):]
     return tail == "" or tail[0] in " \t\r\n"
 
 
-def _strip_agent_prefix(text: str) -> str:
+def _strip_sandbox_prefix(text: str) -> str:
     """Срезать с начала сообщения '@helpbot' и все пробелы после него.
 
-    Возвращает «хвост» — команду/текст, который передаём агенту. Если после
+    Возвращает «хвост» — команду/текст, который передаём в песочницу. Если после
     среза получилась пустая строка (и нет картинки) — сообщение игнорируется.
     """
     t = text.lstrip()
-    rest = t[len(AGENT_PREFIX):]
+    rest = t[len(SANDBOX_PREFIX):]
     # Срезаем все пробелы (обычные, табы, переводы строк) сразу после слова
     return rest.lstrip(" \t\r\n")
 
 
-async def on_agent(client, message: Message):
-    """Обработка агента по SANDBOX_COMMAND: работа в SANDBOX_ROOT независимо от чата.
+async def on_sandbox(client, message: Message):
+    """Обработка песочницы по SANDBOX_COMMAND: работа в SANDBOX_ROOT независимо от чата.
 
     Сообщение обязано начинаться с триггера config.SANDBOX_COMMAND (по умолчанию
     '@helpbot'), дальше пробел и команда/текст (с картинкой или без). Работает
@@ -542,10 +538,10 @@ async def on_agent(client, message: Message):
     триггера НЕ применяется.
 
     Остаток после триггера обрабатывается так же, как обычное сообщение бота,
-    но в агентском контексте (корень SANDBOX_ROOT, отдельный выбор проекта):
-      - команда (/list /new /switch /status /kill ...) → on_command(agent=True)
-      - /clear → on_chat(agent=True) (это промпт для claude)
-      - просто текст / вложение → on_chat / on_photo|on_video|on_audio|on_document(agent=True).
+    но в контексте песочницы (корень SANDBOX_ROOT, отдельный выбор проекта):
+      - команда (/list /new /switch /status /kill ...) → on_command(sandbox=True)
+      - /clear → on_chat(sandbox=True) (это промпт для claude)
+      - просто текст / вложение → on_chat / on_photo|on_video|on_audio|on_document(sandbox=True).
 
     Если после среза триггера и пробелов осталась пустая строка и нет
     прикреплённой картинки — сообщение игнорируется (ничего не отправляем).
@@ -555,14 +551,14 @@ async def on_agent(client, message: Message):
     if not st:
         st = store.get_or_init(user_id)
 
-    # Каталог, где работает агент: SANDBOX_ROOT или песочница по умолчанию.
+    # Каталог, где работает песочница: SANDBOX_ROOT или песочница по умолчанию.
     try:
         config.SANDBOX_ROOT.mkdir(parents=True, exist_ok=True)
     except OSError:
-        await _reply(message, f"⚠️ Не удалось создать каталог агента: {config.SANDBOX_ROOT}")
+        await _reply(message, f"⚠️ Не удалось создать каталог песочницы: {config.SANDBOX_ROOT}")
         return
 
-    rest = _strip_agent_prefix(message.text or (message.caption or ""))
+    rest = _strip_sandbox_prefix(message.text or (message.caption or ""))
     has_media = _has_any_media(message)
 
     # Пусто и нет вложения — нечего обрабатывать, игнорируем молча.
@@ -570,41 +566,40 @@ async def on_agent(client, message: Message):
         return
 
     # Остаток начинается с '/' — это команда бота (или /clear для claude).
-    # Вложение при команде не в дело. Работаем в агентском контексте (agent=True).
+    # Вложение при команде не в дело. Работаем в контексте песочницы (sandbox=True).
     if rest.strip().startswith("/"):
         cmd = rest.strip().split()[0].lower()
         if cmd == "/clear":
             # /clear — не команда бота, а промпт для claude (он сам сбросит контекст).
-            await on_chat(client, message, rest.strip(), agent=True)
+            await on_chat(client, message, rest.strip(), sandbox=True)
         else:
-            await on_command(client, message, rest.strip(), agent=True)
+            await on_command(client, message, rest.strip(), sandbox=True)
         return
 
     # Просто текст или вложение (фото/видео/документ): уходим в claude в SANDBOX_ROOT.
     if has_media:
         # Срезанный остаток передаём как подпись (в caption он ещё с '@helpbot').
-        # Вызываем соответствующий обработчик по типу вложения.
         g = getattr
         if g(message, "photo", None):
-            await on_photo(client, message, agent=True, prompt_override=rest)
+            await on_photo(client, message, sandbox=True, prompt_override=rest)
         elif g(message, "video", None):
-            await on_video(client, message, agent=True, prompt_override=rest)
+            await on_video(client, message, sandbox=True, prompt_override=rest)
         elif g(message, "video_note", None):
-            await on_video_note(client, message, agent=True, prompt_override=rest)
+            await on_video_note(client, message, sandbox=True, prompt_override=rest)
         elif g(message, "audio", None) or g(message, "voice", None):
-            await on_audio(client, message, agent=True, prompt_override=rest)
+            await on_audio(client, message, sandbox=True, prompt_override=rest)
         elif g(message, "document", None) or g(message, "animation", None):
-            await on_document(client, message, agent=True, prompt_override=rest)
+            await on_document(client, message, sandbox=True, prompt_override=rest)
         elif g(message, "sticker", None):
-            await on_sticker(client, message, agent=True, prompt_override=rest)
+            await on_sticker(client, message, sandbox=True, prompt_override=rest)
         elif g(message, "poll", None) or g(message, "location", None) \
                 or g(message, "venue", None) or g(message, "contact", None):
-            await _handle_textual_media(client, message, agent=True)
+            await _handle_textual_media(client, message, sandbox=True)
         else:
             # Неизвестный тип вложения под @helpbot — сообщаем, что не можем.
             await _on_unknown_media(client, message)
     else:
-        await on_chat(client, message, rest, agent=True)
+        await on_chat(client, message, rest, sandbox=True)
 
 
 def _has_any_media(message) -> bool:
@@ -691,10 +686,10 @@ async def on_all_message(client, message: Message):
     text = (message.text or "").strip()
     caption = (message.caption or "").strip()
     has_media = _has_any_media(message)
-    if _is_agent_message(text) or (has_media and _is_agent_message(caption)):
+    if _is_sandbox_message(text) or (has_media and _is_sandbox_message(caption)):
         if not _is_allowed_user(user_id):
             return
-        await on_agent(client, message)
+        await on_sandbox(client, message)
         return
     if not _allowed(user_id, message.chat.id):
         return
@@ -744,11 +739,11 @@ async def on_all_message(client, message: Message):
         await on_chat(client, message, text)
 
 
-async def on_command(client, message: Message, text: str, agent: bool = False):
+async def on_command(client, message: Message, text: str, sandbox: bool = False):
     """Обработка команд: /start /list /switch /new /status /clean /help.
 
-    agent=True — командный контекст @helpbot: работает внутри SANDBOX_ROOT и над
-    отдельным выбором проекта st.agent_project_root (не пересекается с обычным
+    sandbox=True — командный контекст @helpbot: работает внутри SANDBOX_ROOT и над
+    отдельным выбором проекта st.sandbox_project_root (не пересекается с обычным
     стейтом, который живёт в PROJECTS_ROOT).
     """
     parts = text.split()
@@ -756,16 +751,16 @@ async def on_command(client, message: Message, text: str, agent: bool = False):
     user_id = _author(message)
     st = store.get_or_init(user_id)
     # Корень и активный проект зависят от режима: обычный (PROJECTS_ROOT) или
-    # агентский (SANDBOX_ROOT). Ниже всё работает через root/active.
-    root = config.SANDBOX_ROOT if agent else config.PROJECTS_ROOT
-    label = "SANDBOX_ROOT" if agent else "PROJECTS_ROOT"
-    active = st.get_active_root(agent)
-    active_name = st.active_name(agent)
+    # песочница (SANDBOX_ROOT). Ниже всё работает через root/active.
+    root = config.SANDBOX_ROOT if sandbox else config.PROJECTS_ROOT
+    label = "SANDBOX_ROOT" if sandbox else "PROJECTS_ROOT"
+    active = st.get_active_root(sandbox)
+    active_name = st.active_name(sandbox)
 
     if cmd == "/start" or cmd == "/help":
         box = [f"👋 Привет! Я бот для работы с Claude через Telegram (v{config.BOT_VERSION}).\n"]
         box.append(f"Корень проектов ({label}): {root}")
-        if agent:
+        if sandbox:
             box.append(f"Режим: {config.SANDBOX_COMMAND} (работа в {label})\n")
         if not active:
             box.append("Выбери проект командой /list или создай новый через /new.\n")
@@ -798,9 +793,9 @@ async def on_command(client, message: Message, text: str, agent: bool = False):
         if not proj.is_dir():
             await _reply(message, f"Проект {name} не найден. Смотри /list")
             return
-        st.set_active(agent, str(proj), name)
-        # НЕ сбрасываем сессию: на этом проекте хранится своя session_id,
-        # она восстановится из st.session_ids при следующем запросе.
+        st.set_active(sandbox, str(proj), name)
+        # НЕ сбрасываем сессию: на этом проекте своя сессия, при следующем
+        # запросе она восстановится с диска через has_session.
         store.update(st)
         await _reply(message, f"✅ Переключился на проект: {name}")
 
@@ -811,17 +806,17 @@ async def on_command(client, message: Message, text: str, agent: bool = False):
             return
         proj = root / name
         proj.mkdir(parents=True, exist_ok=True)
-        st.set_active(agent, str(proj), name)
+        st.set_active(sandbox, str(proj), name)
         store.update(st)
         await _reply(message, f"✅ Создан и активирован проект: {name}")
 
     elif cmd == "/status":
         st = store.get(user_id) or st
-        active = st.get_active_root(agent)
-        lines = [f"📊 Статус (v{config.BOT_VERSION}):\nПроект: {st.active_name(agent) or '(не выбран)'}"]
+        active = st.get_active_root(sandbox)
+        lines = [f"📊 Статус (v{config.BOT_VERSION}):\nПроект: {st.active_name(sandbox) or '(не выбран)'}"]
         lines.append(f"Корень проектов ({label}): {root}")
         lines.append(f"Активный путь: {active or '/'}")
-        lines.append(f"Сессия: {st.get_session(active) or '(новая)'}")
+        lines.append(f"Сессия: {'продолжаем последнюю' if has_session(Path(active)) else '(новая)'}")
         lines.append(
             f"Запущено ботом: {len(_bot_proc_pids)} задач, "
             f"активных: {len(_active_tasks)}"
@@ -844,28 +839,34 @@ async def on_command(client, message: Message, text: str, agent: bool = False):
     elif cmd == "/clearmedia":
         # Удалить скачанные вложения (.claude_tg_bot_media) в текущем каталоге.
         # В корзину или навсегда — по DELETE_MODE. Сообщаем сколько удалили.
-        await _clear_media(message, active, agent=agent, root=str(root))
+        await _clear_media(message, active, sandbox=sandbox, root=str(root))
+
+    elif cmd == "/mediasize":
+        await _media_size(message, active, root=str(root))
 
     else:
-        # Незнакомые команды молча игнорируем
         return
 
 
-async def _clear_media(message, active: str, agent: bool = False, root: str = ""):
+async def _clear_media(message, active: str, sandbox: bool = False, root: str = "", silent: bool = False):
     """Команда /clearmedia: удалить скачанные вложения текущего проекта.
 
-    Удаляет подпапку .claude_tg_bot_media внутри активного каталога. Считает, сколько
-    файлов и какой объём освобождается, и удаляет по DELETE_MODE (в корзину или
-    навсегда). Если вложений нет — сообщает об этом.
+    Удаляет подпапку .claude_tg_bot_media внутри активного каталога целиком
+    (в т.ч. пустую — чтобы не оставалось следов), по DELETE_MODE. Считает,
+    сколько файлов и какой объём освобождается.
+
+    silent=True — автовызов из /clear: если каталога с вложениями НЕТ, ничего
+    не шлём и молча возвращаемся (чтобы очистка не отвечала «чистить нечего»).
+    Если каталог был пуст — удаляем его и тоже сообщаем об этом.
     """
     base = Path(active) if active else Path(root)
     media_dir = base / ".claude_tg_bot_media"
 
-    if not media_dir.exists() or not any(media_dir.iterdir()):
-        await _reply(message, "Нет скачанных вложений — чистить нечего.")
+    if not media_dir.exists():
+        if not silent:
+            await _reply(message, "Нет скачанных вложений — чистить нечего.")
         return
 
-    # Сосчитать файлы и объём до удаления.
     files = [p for p in media_dir.rglob("*") if p.is_file()]
     count = len(files)
     size = _dir_size(media_dir)
@@ -874,16 +875,41 @@ async def _clear_media(message, active: str, agent: bool = False, root: str = ""
     mode = (config.DELETE_MODE or "trash").lower()
     where = "в корзину" if mode == "trash" else "навсегда"
 
-    # Удаляем каталог целиком (по DELETE_MODE).
     try:
         _delete_path(media_dir, mode)
     except Exception as e:
         await _reply(message, f"⚠️ Не удалось очистить вложения: {e}")
         return
 
+    if count:
+        await _reply(
+            message,
+            f"🧹 Удалён каталог вложений ({count} файл(ов), ~{free}) — {where}.\n"
+            f"{media_dir}",
+        )
+    else:
+        await _reply(message, f"🧹 Удалён пустой каталог вложений.\n{media_dir}")
+
+
+async def _media_size(message, active: str, root: str = ""):
+    """Команда /mediasize: показать количество и объём скачанных вложений.
+
+    Не удаляет ничего — только отчёт по .claude_tg_bot_media активного каталога.
+    """
+    base = Path(active) if active else Path(root)
+    media_dir = base / ".claude_tg_bot_media"
+
+    if not media_dir.exists() or not any(media_dir.iterdir()):
+        await _reply(message, "Нет скачанных вложений в активном проекте.")
+        return
+
+    files = [p for p in media_dir.rglob("*") if p.is_file()]
+    count = len(files)
+    size = _dir_size(media_dir)
+
     await _reply(
         message,
-        f"🧹 Удалено {count} файл(ов) (~{free}) — {where}.\n"
+        f"📎 Вложения ({count} файл(ов), ~{_fmt_bytes(size)}):\n"
         f"Каталог: {media_dir}",
     )
 
@@ -893,7 +919,7 @@ async def _handle_attachment(
     message: Message,
     kind: str,
     ext: str,
-    agent: bool = False,
+    sandbox: bool = False,
     prompt_override: Optional[str] = None,
     sniff_ext: bool = False,
 ):
@@ -921,7 +947,7 @@ async def _handle_attachment(
     содержимому (PNG/JPEG/WebP/GIF) и переименовать файл, чтобы claude видел
     верный тип (объект photo в Pyrogram не несёт mime_type/file_name).
 
-    agent=True — контекст @helpbot: работаем в SANDBOX_ROOT (или агентском проекте),
+    sandbox=True — контекст @helpbot: работаем в SANDBOX_ROOT (или проекте песочницы),
     а не в обычном project_root. prompt_override — заменяет caption для @helpbot.
     """
     user_id = _author(message)
@@ -930,9 +956,9 @@ async def _handle_attachment(
         await _reply(message, "Сначала выбери проект: /list или /new <имя>")
         return
 
-    # Рабочий каталог: агентский проект (иначе корень SANDBOX_ROOT) или обычный.
-    if agent:
-        project = Path(st.agent_project_root or config.SANDBOX_ROOT)
+    # Рабочий каталог: проект песочницы (иначе корень SANDBOX_ROOT) или обычный.
+    if sandbox:
+        project = Path(st.sandbox_project_root or config.SANDBOX_ROOT)
     else:
         if not st.project_root:
             await _reply(message, "Сначала выбери проект: /list или /new <имя>")
@@ -958,7 +984,6 @@ async def _handle_attachment(
         return
 
     if sniff_ext:
-        # Определяем формат по магическим байтам и переименовываем файл.
         real_ext = _sniff_image_ext(media_path)
         if real_ext != download_ext:
             renamed = media_path.with_suffix(real_ext)
@@ -971,48 +996,44 @@ async def _handle_attachment(
     if caption.startswith("/"):
         # Подпись — команда (напр. /status): обрабатываем её, вложение не в дело.
         media_path.unlink(missing_ok=True)
-        await on_command(client, message, caption, agent=agent)
+        await on_command(client, message, caption, sandbox=sandbox)
         return
 
     # Вложение с подписью или без: caption становится промптом. Если подписи нет —
     # уходим в claude с ПУСТЫМ промптом: он сам увидит @файл и сохранит его в
     # контексте сессии (никакой заглушки). Обрабатываем в фоне, чтобы не
     # блокировать последующие сообщения.
-    # Стартуем НОВУЮ сессию (без --resume): вложение уходит в claude как отдельное.
+    # Единый алгоритм: _run_and_reply сам резолвит последнюю сессию каталога.
     _start_bg(_run_and_reply(client, message, st, caption, [media_path], cwd=str(project)))
 
 
-async def on_photo(client, message: Message, agent: bool = False, prompt_override: Optional[str] = None):
-    """Обработка фото → в claude.
-
-    Расширение определяем по содержимому скачанного файла (PNG/JPEG/WebP/GIF),
-    т.к. Pyrogram-объект photo не несёт file_name/mime_type. Fallback — .jpg
-    (как в старом варианте, чтобы claude всегда видел картинку).
-    """
+async def on_photo(client, message: Message, sandbox: bool = False, prompt_override: Optional[str] = None):
+    """Расширение определяем по содержимому скачанного файла (PNG/JPEG/WebP/GIF),
+    т.к. Pyrogram-объект photo не несёт file_name/mime_type. Fallback — .jpg,
+    чтобы claude всегда видел картинку."""
     media = message.photo
     if media is None:
         return
-    # Расширение по содержимому (PNG/JPEG/WebP/GIF) — определяем после скачивания.
-    await _handle_attachment(client, message, "фото", ".jpg", agent, prompt_override, sniff_ext=True)
+    await _handle_attachment(client, message, "фото", ".jpg", sandbox, prompt_override, sniff_ext=True)
 
 
-async def on_audio(client, message: Message, agent: bool = False, prompt_override: Optional[str] = None):
+async def on_audio(client, message: Message, sandbox: bool = False, prompt_override: Optional[str] = None):
     """Обработка звука/голосового → в claude (он сам транскрибирует/разберёт)."""
     media = message.audio or message.voice
     if media is None:
         return
-    await _handle_attachment(client, message, "аудио", _media_ext(media), agent, prompt_override)
+    await _handle_attachment(client, message, "аудио", _media_ext(media), sandbox, prompt_override)
 
 
-async def on_video(client, message: Message, agent: bool = False, prompt_override: Optional[str] = None):
+async def on_video(client, message: Message, sandbox: bool = False, prompt_override: Optional[str] = None):
     """Обработка видео → в claude (он сам извлечёт кадры и разберёт)."""
     media = message.video
     if media is None:
         return
-    await _handle_attachment(client, message, "видео", _media_ext(media), agent, prompt_override)
+    await _handle_attachment(client, message, "видео", _media_ext(media), sandbox, prompt_override)
 
 
-async def on_video_note(client, message: Message, agent: bool = False, prompt_override: Optional[str] = None):
+async def on_video_note(client, message: Message, sandbox: bool = False, prompt_override: Optional[str] = None):
     """Обработка видеосообщения-кружка (video_note) как видео.
 
     Кружок — круглое видеосообщение. Отдаём его claude как видео: он сам
@@ -1024,18 +1045,18 @@ async def on_video_note(client, message: Message, agent: bool = False, prompt_ov
     ext = _media_ext(media)
     if ext == ".bin":  # у кружка нет file_name; без mime считаем .mp4
         ext = ".mp4"
-    await _handle_attachment(client, message, "видео-кружок", ext, agent, prompt_override)
+    await _handle_attachment(client, message, "видео-кружок", ext, sandbox, prompt_override)
 
 
-async def on_document(client, message: Message, agent: bool = False, prompt_override: Optional[str] = None):
+async def on_document(client, message: Message, sandbox: bool = False, prompt_override: Optional[str] = None):
     """Обработка произвольного файла (документ/GIF-анимация) → в claude."""
     media = message.document or message.animation
     if media is None:
         return
-    await _handle_attachment(client, message, "файл", _media_ext(media), agent, prompt_override)
+    await _handle_attachment(client, message, "файл", _media_ext(media), sandbox, prompt_override)
 
 
-async def on_sticker(client, message: Message, agent: bool = False, prompt_override: Optional[str] = None):
+async def on_sticker(client, message: Message, sandbox: bool = False, prompt_override: Optional[str] = None):
     """Обработка стикера → в claude как изображение-вложение.
 
     Стикер — это файл (.webp/.tgs/.webm), скачиваем и отдаём claude: он сам
@@ -1047,7 +1068,7 @@ async def on_sticker(client, message: Message, agent: bool = False, prompt_overr
     ext = _media_ext(media)
     if ext == ".bin":  # стикер без mime — обычно .webp
         ext = ".webp"
-    await _handle_attachment(client, message, "стикер", ext, agent, prompt_override)
+    await _handle_attachment(client, message, "стикер", ext, sandbox, prompt_override)
 
 
 def _textual_media_prompt(message) -> Optional[str]:
@@ -1090,7 +1111,7 @@ def _textual_media_prompt(message) -> Optional[str]:
     return None
 
 
-async def _handle_textual_media(client, message, agent: bool = False):
+async def _handle_textual_media(client, message, sandbox: bool = False):
     """Отправить в claude текстовое описание медиа (опрос/гео/контакт).
 
     on_chat сам запускает claude фоновой задачей (_start_bg внутри), поэтому
@@ -1099,7 +1120,7 @@ async def _handle_textual_media(client, message, agent: bool = False):
     prompt = _textual_media_prompt(message)
     if not prompt:
         return
-    await on_chat(client, message, prompt, agent=agent)
+    await on_chat(client, message, prompt, sandbox=sandbox)
 
 
 def _count_group(gid: int) -> int:
@@ -1168,7 +1189,7 @@ def _start_bg(coro):
     return task
 
 
-async def on_chat(client, message: Message, text: str, agent: bool = False):
+async def on_chat(client, message: Message, text: str, sandbox: bool = False):
     """Обычное сообщение → запуск claude в активном проекте.
 
     Запускаем claude ФОНОВОЙ задачей (create_task), а не ждём её здесь.
@@ -1176,8 +1197,8 @@ async def on_chat(client, message: Message, text: str, agent: bool = False):
     и все последующие сообщения — в т.ч. команды /help, /kill — встают в
     очередь и не обрабатываются. В фоне команды отрабатывают сразу.
 
-    agent=True — контекст @helpbot: работаем в SANDBOX_ROOT (или в выбранном
-    агентском проекте st.agent_project_root), а не в обычном project_root.
+    sandbox=True — контекст @helpbot: работаем в SANDBOX_ROOT (или в выбранном
+    проекте песочницы st.sandbox_project_root), а не в обычном project_root.
     """
     user_id = _author(message)
     st = store.get(user_id)
@@ -1189,8 +1210,8 @@ async def on_chat(client, message: Message, text: str, agent: bool = False):
 
     # Рабочий каталог зависит от режима:
     #  - обычный: нужен выбранный проект (иначе ошибка);
-    #  - @helpbot: выбранный агентский проект, иначе корень SANDBOX_ROOT (сама песочница).
-    if not agent:
+    #  - @helpbot: выбранный проект песочницы, иначе корень SANDBOX_ROOT (сама песочница).
+    if not sandbox:
         if not st.project_root:
             await _reply(message, 
                 "Нет активного проекта. Выбери: /list или /new <имя>"
@@ -1198,13 +1219,20 @@ async def on_chat(client, message: Message, text: str, agent: bool = False):
             return
         project_root = st.project_root
     else:
-        project_root = st.agent_project_root or str(config.SANDBOX_ROOT)
+        project_root = st.sandbox_project_root or str(config.SANDBOX_ROOT)
 
-    session_id = st.get_session(project_root) or None
-    _start_bg(_run_and_reply(client, message, st, text, [], session_id=session_id, cwd=project_root))
+    # /clear — полный сброс: сначала чистим скачанные вложения, потом шлём
+    # /clear в claude (тот сам сбросит контекст сессии). Иначе файлы остаются.
+    if text.split()[0].lower() == "/clear":
+        root = config.SANDBOX_ROOT if sandbox else config.PROJECTS_ROOT
+        # silent: если каталога вложений нет — молча идём дальше, в Claude.
+        await _clear_media(message, project_root, sandbox=sandbox, root=str(root), silent=True)
+
+    continue_session = has_session(Path(project_root))
+    _start_bg(_run_and_reply(client, message, st, text, [], continue_session=continue_session, cwd=project_root))
 
 
-async def _run_and_reply(client, message, st, prompt: str, image_paths, session_id=None, cwd=None):
+async def _run_and_reply(client, message, st, prompt: str, image_paths, continue_session=False, cwd=None):
     """Общая точка: запуск claude + вывод результата.
 
     Перед обработкой шлём «работаю», запоминаем его id, а когда claude ответил —
@@ -1215,9 +1243,18 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, session_
 
     cwd — рабочий каталог Claude. По умолчанию st.project_root
     (активный проект). Для @helpbot передаётся config.SANDBOX_ROOT (песочница
-    агента).
+    песочницы).
+
+    continue_session — если True, продолжаем последнюю сессию каталога (--continue);
+    иначе запускается новая.
     """
     project = Path(cwd) if cwd else Path(st.project_root)
+    # Единый алгоритм для любых сообщений (с вложениями и без): продолжаем
+    # последнюю сессию каталога с диска (как локальный --continue), либо новую.
+    # Если продолжение не задано явно — сами проверяем наличие сессии на диске,
+    # чтобы все точки входа (on_chat, on_photo, @helpbot) вели себя одинаково.
+    if not continue_session:
+        continue_session = has_session(project)
     # Помечаем чат «занятым», чтобы бот не реагировал на собственные ответы
     # Посылаем индикатор работы и запоминаем его id (chat_id + message_id).
     # Индикатор шлём с ретраями (как и ответ): при меж-DC ошибке Telegram
@@ -1239,7 +1276,6 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, session_
     busy_msg_id = busy.id if busy else None
 
     async def _cleanup_busy():
-        # Удалить «работаю» после ответа/ошибки, как условие обработки выполнено
         if busy_chat is not None and busy_msg_id is not None:
             try:
                 # Короткий таймаут: при недоступном MTProto-прокси Pyrogram
@@ -1256,18 +1292,21 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, session_
             result = await run_claude(
                 prompt,
                 cwd=project,
-                session_id=session_id,
+                continue_session=continue_session,
                 image_paths=image_paths,
                 proc_registry=_bot_proc_pids,
             )
-            # Сохраняем актуальный session_id для ЭТОГО проекта, чтобы далее
-            # продолжать контекст даже после /switch на другой проект и обратно.
-            # Для @helpbot ключём служит фактический каталог (project), а не
-            # активный проект пользователя.
-            if result.session_id:
-                st.set_session(str(project), result.session_id)
-                store.update(st)
-            text = result.text or "(пустой ответ)"
+            # Сессия хранится на диске: следующий запрос через has_session
+            # сам подхватит продолжение. Сохранять session_id в state не нужно.
+            text = result.text
+            if not text:
+                # При /clear Claude сбрасывает контекст и отвечает пустотой —
+                # показываем осмысленное сообщение вместо «(пустой ответ)».
+                parts = prompt.split()
+                if parts and parts[0].lower() == "/clear":
+                    text = "🧹 Контекст очищен — начата новая сессия."
+                else:
+                    text = "(пустой ответ)"
             # Телеграм лимит 4096 — режем с указанием
             if len(text) > 4000:
                 text = text[:4000] + "\n\n… (ответ обрезан, продолжай следующим сообщением)"
@@ -1365,12 +1404,13 @@ async def main():
     # спама в stderr показывать в консоли единую строку статуса.
     _STATUS_FILTER.install()
 
-    print(f"Запуск бота. Сессия: {config.SESSION_NAME}")
-    env_src = str(config.CONFIG_ENV_PATH) if config.CONFIG_ENV_PATH else "не найден — дефолты"
-    print(f"config.env: {env_src}")
+    print(f"Запуск бота. Telegram-сессия: {config.SESSION_NAME}")
+    # config.env путь уже показал run.sh (==> config.env). Здесь печатаем корень
+    # проектов и каталог песочницы подряд, чтобы было видно, где лежит что.
+    print(f"Корень проектов (PROJECTS_ROOT): {config.PROJECTS_ROOT}")
+    print(f"Каталог песочницы ({config.SANDBOX_COMMAND}): {config.SANDBOX_ROOT}")
     print("MT-прокси:", ("задан" if config.MT_PROXY else "НЕ задан (прямое подключение)"))
     print(f"Команда Claude: {config.CLAUDE_COMMAND} {config.COMMAND_ARGS}".strip())
-    print(f"Каталог агента ({config.SANDBOX_COMMAND}): {config.SANDBOX_ROOT}")
 
     # start() — подключаемся к Telegram (в т.ч. логин). При сбое сети не
     # вылетаем с трейсбеком, а печатаем короткое сообщение и повторяем

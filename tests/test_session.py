@@ -7,7 +7,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from session import UserState, is_safe_project_name  # noqa: E402
+from session import UserState, is_safe_project_name, has_session  # noqa: E402
 
 
 class TestUserState(unittest.TestCase):
@@ -18,50 +18,38 @@ class TestUserState(unittest.TestCase):
             user_id=123,
             project_root="/p/one",
             project_name="one",
-            agent_project_root="/agent/foo",
-            agent_project_name="foo",
+            sandbox_project_root="/sandbox/foo",
+            sandbox_project_name="foo",
         )
-        st.set_session("/p/one", "sess-1")
-        st.set_session("/agent/foo", "sess-agent")
         st.last_cwd = "/p/one"
         restored = UserState.from_dict(st.to_dict())
         self.assertEqual(restored.user_id, 123)
         self.assertEqual(restored.project_root, "/p/one")
-        self.assertEqual(restored.agent_project_root, "/agent/foo")
-        self.assertEqual(restored.get_session("/p/one"), "sess-1")
-        self.assertEqual(restored.get_session("/agent/foo"), "sess-agent")
+        self.assertEqual(restored.sandbox_project_root, "/sandbox/foo")
         self.assertEqual(restored.last_cwd, "/p/one")
 
-    def test_backward_compat_single_session_id(self):
-        # Старый формат: одиночный session_id (без session_ids)
-        old = {
-            "user_id": 7,
-            "project_root": "/p/x",
-            "project_name": "x",
-            "session_id": "old-sess",
-            "last_cwd": "/p/x",
-            "updated_at": 0,
-        }
-        st = UserState.from_dict(old)
-        # Должен мигрировать в session_ids по project_root
-        self.assertEqual(st.get_session("/p/x"), "old-sess")
-
-    def test_separate_agent_and_normal_state(self):
+    def test_separate_sandbox_and_normal_state(self):
         st = UserState(user_id=1)
-        st.set_active(agent=False, root="/normal/one", name="one")
-        st.set_active(agent=True, root="/agent/foo", name="foo")
+        st.set_active(sandbox=False, root="/normal/one", name="one")
+        st.set_active(sandbox=True, root="/sandbox/foo", name="foo")
         # Раздельные контексты
-        self.assertEqual(st.get_active_root(agent=False), "/normal/one")
-        self.assertEqual(st.get_active_root(agent=True), "/agent/foo")
-        self.assertEqual(st.active_name(agent=False), "one")
-        self.assertEqual(st.active_name(agent=True), "foo")
+        self.assertEqual(st.get_active_root(sandbox=False), "/normal/one")
+        self.assertEqual(st.get_active_root(sandbox=True), "/sandbox/foo")
+        self.assertEqual(st.active_name(sandbox=False), "one")
+        self.assertEqual(st.active_name(sandbox=True), "foo")
 
-    def test_set_session_empty_removes(self):
-        st = UserState(user_id=1)
-        st.set_session("/p", "s1")
-        self.assertEqual(st.get_session("/p"), "s1")
-        st.set_session("/p", "")
-        self.assertEqual(st.get_session("/p"), "")
+
+class TestHasSession(unittest.TestCase):
+    """has_session: есть ли сессия в каталоге (для --continue по каталогу)."""
+
+    def test_empty_dir_false(self):
+        # Каталог, где нет ~/.claude/projects/<slug> (или он пуст) → False
+        self.assertFalse(has_session(Path("/nonexistent/xyz-123")))
+
+    def test_some_dir_returns_bool(self):
+        # Реальный каталог: должен вернуть bool (есть сессия или нет), не упасть.
+        r = has_session(PROJECT_ROOT)
+        self.assertIsInstance(r, bool)
 
 
 class TestIsSafeProjectName(unittest.TestCase):

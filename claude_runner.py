@@ -31,20 +31,20 @@ else:
 
 @dataclass
 class ClaudeResult:
-    """Итог одного вызова Claude."""
-
-    text: str = ""                 # финальный ответ для показа юзеру
-    session_id: str = ""           # session_id сессии (для resume)
-    raw_lines: list[str] = field(default_factory=list)  # сырые JSON-строки
-    tools: list[str] = field(default_factory=list)      # упоминания инструментов
+    text: str = ""
+    session_id: str = ""
+    raw_lines: list[str] = field(default_factory=list)
+    tools: list[str] = field(default_factory=list)
     exit_code: int = 0
 
 
-def _build_command(prompt: str, cwd: Path, session_id: Optional[str]) -> list[str]:
+def _build_command(prompt: str, cwd: Path, continue_session: bool = False) -> list[str]:
     """Собрать argv для Claude.
 
-    - Без --resume просто новый запрос из -p.
-    - С --resume <id> продолжаем существующую сессию (сохраняем контекст).
+    - С --continue продолжаем последнюю сессию каталога (как локальный
+      claude --continue): контекст сохраняется. Сам session_id искать не нужно —
+      Claude разрешает его по каталогу.
+    - Без --continue просто новый запрос из -p — новая сессия.
     - Т.к. это -p (печать), код выполняется неинтерактивно; для правки кода
       это осознанное ограничение первой версии.
     """
@@ -55,10 +55,10 @@ def _build_command(prompt: str, cwd: Path, session_id: Optional[str]) -> list[st
     cmd += shlex.split(config.COMMAND_ARGS)
     # Промпт сразу после -p (как в справке CLI: claude -p "query" ...)
     cmd += ["--print", prompt]
-    if session_id:
-        # Продолжаем конкретную сессию по ID — так сохраняем контекст диалога.
-        # --resume=<id> через '=' — чтобы значение не потерялось при парсинге.
-        cmd += [f"--resume={session_id}"]
+    if continue_session:
+        # Продолжаем последнюю сессию каталога. --continue сам находит самый
+        # свежий session_id, передавать его явно не нужно.
+        cmd += ["--continue"]
     # Авто-режим: бот запускает Claude неинтерактивно (-p), и никто не может
     # ответить на запрос разрешения из терминала. Поэтому передаём режим
     # --permission-mode из настроек (по умолчанию bypassPermissions — полный
@@ -67,6 +67,9 @@ def _build_command(prompt: str, cwd: Path, session_id: Optional[str]) -> list[st
     # было сменить (напр. acceptEdits) без правки кода.
     if config.CLAUDE_PERMISSION_MODE:
         cmd += ["--permission-mode", config.CLAUDE_PERMISSION_MODE]
+    # Системный промпт — добавляем, только если задан в конфиге.
+    if config.CLAUDE_SYSTEM_PROMPT:
+        cmd += ["--append-system-prompt", config.CLAUDE_SYSTEM_PROMPT]
     cmd += [
         "--output-format", "stream-json",
         "--verbose",
@@ -75,7 +78,6 @@ def _build_command(prompt: str, cwd: Path, session_id: Optional[str]) -> list[st
 
 
 def _human_result(lines: Iterable[str]) -> ClaudeResult:
-    """Перевести поток JSONL в человекочитаемый ответ."""
     res = ClaudeResult()
     text_parts: list[str] = []
     for line in lines:
@@ -86,7 +88,6 @@ def _human_result(lines: Iterable[str]) -> ClaudeResult:
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
-            # Не-JSON строка — это мусор от Claude, пропускаем
             continue
 
         event_type = event.get("type")
@@ -107,7 +108,6 @@ def _human_result(lines: Iterable[str]) -> ClaudeResult:
             # Тут может быть tool_result; для читаемого текста они не нужны
             continue
         elif event_type == "result":
-            # Финальный результат содержит итоговый текст
             if not text_parts:
                 text = event.get("result", "")
                 if text:
@@ -122,7 +122,7 @@ def _human_result(lines: Iterable[str]) -> ClaudeResult:
 async def run_claude(
     prompt: str,
     cwd: Path,
-    session_id: Optional[str] = None,
+    continue_session: bool = False,
     image_paths: Optional[list[Path]] = None,
     proc_registry: Optional[set[int]] = None,
 ) -> ClaudeResult:
@@ -158,7 +158,7 @@ async def run_claude(
             # чтобы не воспринималась как задание.
             final_prompt = " ".join(refs)
 
-    cmd = _build_command(final_prompt, cwd, session_id)
+    cmd = _build_command(final_prompt, cwd, continue_session)
     run_cwd = str(cwd)
 
     # Ограничение длины промпта — защита от гигантских сообщений
@@ -333,7 +333,8 @@ def _read_proxy_log(proc_pid: int) -> str:
 # ---------------------------------------------------------------------------
 
 def format_command_hint() -> str:
-    """Краткая справка по командам бота."""
+    mode = (config.DELETE_MODE or "trash").lower()
+    where = "в корзину" if mode == "trash" else "навсегда"
     return (
         "📖 Доступные команды:\n"
         "/start — начать и выбрать проект\n"
@@ -341,9 +342,10 @@ def format_command_hint() -> str:
         "/switch <имя> — переключиться на проект\n"
         "/new [имя] — создать новый проект\n"
         "/status — текущий проект и сессия\n"
-        "/clear — отправить Claude (он сам сбросит/обработает контекст)\n"
-        "/clearmedia — удалить скачанные вложения текущего проекта (в корзину/навсегда)\n"
+        "/clear — сначала автоматически вызвать /clearmedia (очистка вложений), затем отправить в Claude (сброс контекста)\n"
+        f"/clearmedia — удалить скачанные вложения текущего проекта ({where})\n"
+        "/mediasize — показать количество и объём скачанных вложений\n"
         "/kill — убить зависшие сессии Claude, запущенные ботом\n"
-        f"{config.SANDBOX_COMMAND} <команда/текст> — работа в любом чате (в каталоге SANDBOX_ROOT)\n"
+        f"{config.SANDBOX_COMMAND} <команда/текст> — работа в песочнице в любом чате (SANDBOX_ROOT)\n"
         "/help — эта справка"
     )

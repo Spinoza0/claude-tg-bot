@@ -17,7 +17,7 @@ from typing import Iterable, Optional
 
 # Версия бота — показывается в /help и /status. Держим в config, т.к. это
 # единый источник и для пакетного запуска, и для запуска скриптом.
-BOT_VERSION: str = "0.1.0"
+BOT_VERSION: str = "0.2.0"
 
 
 def _find_config_env(candidates: Optional[Iterable[Path]] = None) -> Optional[Path]:
@@ -102,7 +102,6 @@ def _parse_ids(raw: str) -> set:
 
 
 def _env_bool(name: str, default: bool) -> bool:
-    """Парсит булеву переменную окружения (1/true/yes/on → True, иначе False)."""
     raw = os.getenv(name, "").strip().lower()
     if not raw:
         return default
@@ -149,6 +148,11 @@ CLAUDE_PERMISSION_MODE: str = os.getenv("CLAUDE_PERMISSION_MODE", "bypassPermiss
 # оставляется пустым.
 COMMAND_ARGS: str = os.getenv("COMMAND_ARGS", "").strip()
 
+# Системный промпт для Claude (--append-system-prompt). Передаётся модели как
+# системная инструкция. Если пусто — флаг не добавляется вовсе, Claude работает
+# со стандартным системным промптом.
+CLAUDE_SYSTEM_PROMPT: str = os.getenv("CLAUDE_SYSTEM_PROMPT", "").strip()
+
 # Корень, внутри которого боту разрешено создавать/переключать проекты.
 # Не даём боту работать с произвольными путями — песочница.
 PROJECTS_ROOT: Path = Path(
@@ -158,7 +162,7 @@ PROJECTS_ROOT: Path = Path(
 # Каталог по умолчанию для нового чата, если юзер не переключил проект
 DEFAULT_PROJECT: str = os.getenv("DEFAULT_PROJECT", "")
 
-# Максимальное число собрать/обработать одной командой
+# Максимальная длина промпта (символов), отправляемого в Claude
 MAX_PROMPT_LENGTH: int = int(os.getenv("MAX_PROMPT_LENGTH", "8000"))
 
 # Таймаут одного вызова Claude (сек). 0 = без лимита.
@@ -181,17 +185,17 @@ DELETE_MODE: str = (os.getenv("DELETE_MODE", "trash").strip().lower() or "trash"
 
 
 # ---------------------------------------------------------------------------
-# Песочница агента (@helpbot)
+# Песочница (@helpbot)
 # ---------------------------------------------------------------------------
 # SANDBOX_ROOT — абсолютный путь каталога, в котором Claude запускается
-# для сообщений @helpbot (запуск агента «в любом чате» по упоминанию). Если
+# для сообщений @helpbot (запуск песочницы «в любом чате» по упоминанию). Если
 # НЕ задан — создаётся и используется песочница в домашней директории:
 #   ~/.claude-tg-bot/sandbox
 SANDBOX_ROOT: Path = Path(
     os.getenv("SANDBOX_ROOT", str(Path.home() / ".claude-tg-bot" / "sandbox"))
 ).resolve()
 
-# SANDBOX_COMMAND — строка-триггер запуска агента «в любом чате». Сообщение
+# SANDBOX_COMMAND — строка-триггер запуска песочницы «в любом чате». Сообщение
 # обязано начинаться с этой строки (после lstrip), дальше пробел + команда/текст.
 # Если не задана или пустая — используется дефолт "@helpbot" (упоминание бота).
 # Реальное значение показывается в /help и других справках (см. format_command_hint).
@@ -202,7 +206,7 @@ SANDBOX_COMMAND: str = (os.getenv("SANDBOX_COMMAND", "") or "@helpbot").strip()
 # Хранение состояния сессий
 # ---------------------------------------------------------------------------
 
-# Относительно PROJECTS_ROOT храним маппинг «юзер -> активный проект/session_id»
+# Файл с состояниями пользователей (активные проекты и т.п.)
 STATE_FILE: Path = Path(__file__).resolve().parent / "state.json"
 
 
