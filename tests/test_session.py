@@ -7,7 +7,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from session import UserState, is_safe_project_name, has_session  # noqa: E402
+from session import UserState, is_safe_project_name, has_session, claude_project_dir  # noqa: E402
 
 
 class TestUserState(unittest.TestCase):
@@ -50,6 +50,17 @@ class TestHasSession(unittest.TestCase):
         # Реальный каталог: должен вернуть bool (есть сессия или нет), не упасть.
         r = has_session(PROJECT_ROOT)
         self.assertIsInstance(r, bool)
+
+    def test_slug_replaces_dot_with_dash(self):
+        # Claude составляет slug из абсолютного пути, заменяя '/' и '.' на '-'.
+        # Напр. /Users/sintyurin.ivan/... -> -Users-sintyurin-ivan-... (точка в
+        # имени пользователя становится дефисом, а ранее была '_' — из-за этого
+        # has_session искал не тот каталог и --continue не срабатывал).
+        d = claude_project_dir(Path("/Users/sintyurin.ivan/StudioProjects/x"))
+        self.assertEqual(
+            d.name,
+            "-Users-sintyurin-ivan-StudioProjects-x",
+        )
 
 
 class TestIsSafeProjectName(unittest.TestCase):
