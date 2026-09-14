@@ -148,7 +148,11 @@ def claude_project_dir(cwd: Path) -> Path:
     Здесь мы просто воспроизводим этот путь, чтобы найти существует ли сессия.
     """
     cls_projects = Path.home() / ".claude" / "projects"
-    slug = str(cwd.resolve()).replace("/", "-").replace(".", "_")[:80]
+    # Claude составляет slug из абсолютного пути: '/'-' и '.' (напр. в
+    # sintyurin.ivan, .claude) превращаются в '-'. Раньше '.' меняли на '_' —
+    # slug не совпадал, и has_session искал несуществующий каталог, поэтому
+    # --continue никогда не передавался и каждая сессия начиналась заново.
+    slug = str(cwd.resolve()).replace("/", "-").replace(".", "-")[:80]
     return cls_projects / slug
 
 
