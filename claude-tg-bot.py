@@ -303,6 +303,36 @@ class _StatusFilter(logging.Handler):
 
 _STATUS_FILTER = _StatusFilter()
 
+# Ошибка запуска Claude (от valа модели/обёртки): хранится отдельно от логов
+# pygame (тот — про связь с Telegram). Пишется из _run_and_reply при
+# ненулевом exit_code или тексте с признаком ошибки, читается _status_loop.
+# Так консоль показывает ❌ и при отвале модели, а не только при обрыве сети.
+_RUN_ERR_LOCK = threading.Lock()
+_RUN_ERR_TEXT: str = ""
+_RUN_ERR_TS: float = 0.0
+
+
+def _report_run_error(text: str) -> None:
+    global _RUN_ERR_TEXT, _RUN_ERR_TS
+    with _RUN_ERR_LOCK:
+        _RUN_ERR_TEXT = text
+        _RUN_ERR_TS = time.time()
+
+
+def _snapshot_run_error() -> tuple[str, float]:
+    with _RUN_ERR_LOCK:
+        return _RUN_ERR_TEXT, _RUN_ERR_TS
+
+
+# Ошибка модели/обёртки в тексте ответа (если exit_code по какой-то причине
+# остался 0, но пользователь получает в чат не ответ, а сообщение об ошибке).
+_RUN_ERR_MARKERS = ("API Error", "⚠️ Ошибка", "Cannot connect", "502", "503")
+
+
+def _is_run_error(result) -> bool:
+    return result.exit_code != 0 or result.text.lstrip().startswith(_RUN_ERR_MARKERS)
+
+
 # ANSI-цвета для статуса в терминале (зелёный «работаю», красный «ошибка»).
 # Отключаются, если вывод не является TTY (напр. перенаправление в файл) —
 # тогда оставляем только эмодзи, без экранирующих кодов.
@@ -330,40 +360,124 @@ def _friendly(record: str) -> str:
     return msg if len(msg) <= 120 else msg[:120] + "…"
 
 
-def _print_status(state: str, detail: str = "") -> str:
-    if state == "ok":
-        emoji, color, word = "🟢", "\033[32m", "Работаю"
-        body = ""  # в норме текст не нужен — только статус
+# Число строк, которое занял последний блок статуса (для перерисовки).
+_STATUS_PREV_LINES = 0
+
+
+def _stamp() -> str:
+    """Дата+время для строки статуса (напр. 2026-09-12 14:32:05)."""
+    return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _draw_status(lines: list[str]) -> None:
+    """Перерисовать блок статуса на месте, не трогая чужой вывод.
+
+    lines — строки блока: первая — состояние работы, вторая (если есть) —
+    последняя ошибка. Стираем РОВНО предыдущие строки блока (построчно через
+    \\033[2K), не задевая сообщения выше/ниже — иначе блок затирает их, как
+    shell-промпт или лог pyrogram. Затем печатаем новые строки.
+    """
+    global _STATUS_PREV_LINES
+    out = sys.stdout
+    prev = _STATUS_PREV_LINES
+    if prev:
+        # Подняться на высоту прошлого блока и стереть ЕГО строки (2K), не
+        # задевая сообщения выше/ниже.
+        out.write(f"\033[{prev}A\r")
+        for i in range(prev):
+            out.write("\033[2K")
+            if i != prev - 1:
+                out.write("\033[1B")
+        # Вернуться к верхней строке блока, чтобы печатать сверху вниз.
+        if prev > 1:
+            out.write(f"\033[{prev - 1}A\r")
+    for i, line in enumerate(lines):
+        out.write("\033[2K" + line)
+        if i != len(lines) - 1:
+            out.write("\n")
+    out.flush()
+    _STATUS_PREV_LINES = len(lines)
+
+
+def _status_lines(err_display: str, err_ts: float, err_active: bool, work_ts: float) -> list[str]:
+    """Собрать строки блока статуса: работа + последняя ошибка.
+
+    Иконка (🟢/❌) ставится только у АКТУАЛЬНОГО состояния:
+      - если сейчас проблема (err_active=True) — ❌ у ошибки, у «Работаю» без 🟢;
+      - если сейчас всё хорошо — 🟢 у «Работаю», а последняя ошибка без ❌ (как
+        история). Обе строки показываются вместе; ошибка всегда последняя.
+    Нет ошибок вовсе — только «Работаю».
+    work_ts — время, когда установилось состояние «работаю» (НЕ тикает каждый
+    цикл, иначе строка менялась бы и блок не переставал перерисовываться).
+    """
+    color = _use_color()
+    def fmt(t: float) -> str:
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)) if t else ""
+    work_ts_s = fmt(work_ts)
+    if err_active:
+        # Сейчас проблема: работа без 🟢, ошибка с ❌.
+        if color:
+            work = f"\033[32mРаботаю\033[0m [{work_ts_s}]"
+            err = f"\033[31m❌ Ошибка: {err_display}\033[0m [{fmt(err_ts)}]"
+        else:
+            work = f"Работаю [{work_ts_s}]"
+            err = f"❌ Ошибка: {err_display} [{fmt(err_ts)}]"
+        return [work, err]
+    # Сейчас всё хорошо: 🟢 у работы; последняя ошибка — без ❌ (история).
+    if color:
+        work = f"\033[32m🟢 Работаю\033[0m [{work_ts_s}]"
     else:
-        emoji, color, word = "❌", "\033[31m", "Ошибка:"
-        body = f"{detail or 'неизвестно'}"
-    if _use_color():
-        line = f"{color}{emoji} {word}{(' ' + body) if body else ''}\033[0m"
-    else:
-        line = f"{emoji} {word}{(' ' + body) if body else ''}"
-    # \r — перезаписываем предыдущую строку статуса (одна живая строка).
-    sys.stdout.write("\r" + " " * 60 + "\r" + line + "\n")
-    sys.stdout.flush()
-    return state
+        work = f"🟢 Работаю [{work_ts_s}]"
+    lines = [work]
+    if err_display:
+        lines.append(f"Ошибка: {err_display} [{fmt(err_ts)}]")
+    return lines
 
 
 async def _status_loop(stop: asyncio.Event) -> None:
-    """Фон: каждые 1.5с обновляет единую строку статуса при смене состояния."""
-    shown = None
+    """Фон: каждые 1.5с держит блок — «работаю» + последняя ошибка.
+
+    Иконка ❌/🟢 ставится только у актуального состояния: при свежей ошибке —
+    ❌, при норме — 🟢. Последняя ошибка (если была) показывается всегда, но
+    без ❌, когда сейчас всё хорошо, и содержит время. Повторно ошибка не
+    дублируется (блок печатается только при изменении).
+    """
+    prev = None
+    prev_err = None
+    ok_since = 0.0
     await asyncio.sleep(0.2)  # дать pyrogram начать логировать
     while not stop.is_set():
-        last_err, ts = _STATUS_FILTER.snapshot()
-        if last_err and (time.time() - ts) <= _STATUS_OK_AFTER:
-            # Свежая ошибка (была в последние секунды) — показываем её.
-            state = "err"
-            detail = _friendly(last_err)
+        # Объединяем два источника ошибки: связь с Telegram (логи pyrogram) и
+        # отвал модели/обёртки (запуск Claude). Берём более свежую.
+        pg_err, pg_ts = _STATUS_FILTER.snapshot()
+        run_err, run_ts = _snapshot_run_error()
+        if run_err and (not pg_err or run_ts >= pg_ts):
+            last_err, ts = run_err, run_ts
         else:
-            state = "ok"
-            detail = ""
-        # Печатаем только при смене состояния — без спама повторяющихся ошибок.
-        if state != shown:
-            _print_status(state, detail)
-            shown = state
+            last_err, ts = pg_err, pg_ts
+        err_active = bool(last_err) and (time.time() - ts) <= _STATUS_OK_AFTER
+        # Время «работаю» фиксируем при переходе в ок (или на старте), чтобы
+        # оно не тикало каждый цикл и блок не перерисовывался без изменений.
+        if not err_active and (prev_err or ok_since == 0.0):
+            ok_since = time.time()
+        prev_err = err_active
+        # Последняя ошибка показывается всегда (если была) — pyrogram-ошибку
+        # причесываем через _friendly (текст про сеть/Telegram), ошибку запуска
+        # Claude показываем как есть (это не про связь с Telegram).
+        if last_err:
+            if run_err and last_err == run_err:
+                err_display = last_err
+            else:
+                err_display = _friendly(last_err)
+            err_ts = ts
+        else:
+            err_display = ""
+            err_ts = 0.0
+        lines = _status_lines(err_display, err_ts, err_active, ok_since)
+        # Печатаем только при изменении содержимого — без спама повторов.
+        if lines != prev:
+            _draw_status(lines)
+            prev = lines
         try:
             await asyncio.wait_for(stop.wait(), timeout=1.5)
         except asyncio.TimeoutError:
@@ -1296,6 +1410,11 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, continue
                 image_paths=image_paths,
                 proc_registry=_bot_proc_pids,
             )
+            # Ошибка модели/обёртки (отвалилась, вернула is_error) — показываем
+            # ❌ в консольном статусе, а не только «Работаю». Текст в Telegram
+            # уходит как есть, чтобы пользователь видел причину.
+            if _is_run_error(result):
+                _report_run_error(result.text or f"Ошибка Claude (код {result.exit_code})")
             # Сессия хранится на диске: следующий запрос через has_session
             # сам подхватит продолжение. Сохранять session_id в state не нужно.
             text = result.text
@@ -1432,6 +1551,10 @@ async def main():
         # Останавливаем статус-луп и корректно завершаемся.
         stop_status.set()
         status_task.cancel()
+        # Перенос строк после последнего блока статуса — иначе следующий вывод
+        # (трейсбек, shell prompt) прилипнет к последней строке блока.
+        sys.stdout.write("\n" * (_STATUS_PREV_LINES + 1))
+        sys.stdout.flush()
         # Корректная остановка: отменяем фоновые задачи (они могли остаться
         # зависшими на claude) и глушим Pyrogram. Иначе asyncio.run не может
         # завершить цикл событий, пока живы эти задачи, и Ctrl+C «не работает».

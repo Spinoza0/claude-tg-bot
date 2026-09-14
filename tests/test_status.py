@@ -94,7 +94,7 @@ class TestStatusLoop(unittest.TestCase):
 
         async def scenario():
             printed = []
-            bot._print_status = lambda state, detail="": (printed.append((state, detail)), state)[1]
+            bot._draw_status = lambda lines: printed.append(lines)
             bot._STATUS_FILTER.emit(_record("Connection failed: gaierror boom"))
             stop = asyncio.Event()
             task = asyncio.create_task(bot._status_loop(stop))
@@ -104,16 +104,20 @@ class TestStatusLoop(unittest.TestCase):
 
         printed = asyncio.run(scenario())
         self.assertTrue(printed)
-        self.assertEqual(printed[-1][0], "err")
-        # Ошибка преобразуется в понятный текст (не сырой gaierror)
-        self.assertIn("разрешить хост", printed[-1][1] or "")
+        last = printed[-1]
+        # Блок из двух строк: «Работаю» (без 🟢) + ❌ Ошибка (последняя).
+        self.assertEqual(len(last), 2)
+        self.assertIn("Работаю", last[0])
+        self.assertNotIn("🟢", last[0])          # проблема — нет 🟢 у работы
+        self.assertIn("❌", last[1])             # ошибка актуальна — с ❌
+        self.assertIn("разрешить хост", last[1])
 
     def test_returns_ok_when_stale(self):
         bot = self.bot
 
         async def scenario():
             printed = []
-            bot._print_status = lambda state, detail="": (printed.append((state, detail)), state)[1]
+            bot._draw_status = lambda lines: printed.append(lines)
             bot._STATUS_FILTER.emit(_record("old error"))
             bot._STATUS_FILTER._last_error_ts = 0  # «давно» — устарело
             stop = asyncio.Event()
@@ -124,7 +128,59 @@ class TestStatusLoop(unittest.TestCase):
 
         printed = asyncio.run(scenario())
         self.assertTrue(printed)
-        self.assertEqual(printed[0][0], "ok")
+        last = printed[-1]
+        # Сейчас всё хорошо: 🟢 у «Работаю», последняя ошибка — без ❌.
+        self.assertEqual(len(last), 2)
+        self.assertIn("🟢", last[0])             # норма — работа с 🟢
+        self.assertIn("Ошибка", last[1])
+        self.assertNotIn("❌", last[1])          # ошибка устарела — без ❌
+
+
+class TestRunError(unittest.TestCase):
+    """Ошибка запуска Claude отражается в консольном статусе (отвал модели)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.bot = _load_bot_module()
+
+    def test_is_run_error_by_exit_code_and_markers(self):
+        bot = self.bot
+        # exit_code != 0 — ошибка
+        self.assertTrue(bot._is_run_error(type("R", (), {"exit_code": 1, "text": "..."})()))
+        # текст с маркером обёртки — ошибка
+        self.assertTrue(bot._is_run_error(type("R", (), {"exit_code": 0, "text": "API Error: 502 ..."})()))
+        # нормальный ответ — не ошибка
+        self.assertFalse(bot._is_run_error(type("R", (), {"exit_code": 0, "text": "Курс доллара..."})()))
+
+    def test_report_and_snapshot(self):
+        bot = self.bot
+        bot._report_run_error("API Error: 502")
+        text, ts = bot._snapshot_run_error()
+        self.assertEqual(text, "API Error: 502")
+        self.assertGreater(ts, 0)
+
+    def test_status_loop_shows_run_error(self):
+        bot = self.bot
+        bot._STATUS_FILTER._last_error = None  # связь с Telegram в норме
+
+        async def scenario():
+            printed = []
+            bot._draw_status = lambda lines: printed.append(lines)
+            bot._report_run_error("API Error: 502 Cannot connect")
+            stop = asyncio.Event()
+            task = asyncio.create_task(bot._status_loop(stop))
+            await asyncio.sleep(0.35)
+            task.cancel()
+            return printed
+
+        printed = asyncio.run(scenario())
+        self.assertTrue(printed)
+        last = printed[-1]
+        # Свежая run-ошибка → без 🟢, с ❌.
+        self.assertEqual(len(last), 2)
+        self.assertNotIn("🟢", last[0])
+        self.assertIn("❌", last[1])
+        self.assertIn("API Error", last[1])
 
 
 if __name__ == "__main__":
