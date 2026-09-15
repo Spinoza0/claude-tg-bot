@@ -1,12 +1,14 @@
 """Создание Telegram-клиента, точка входа main() и подключение с повторами."""
 
 import asyncio
+import logging
 import sys
 
 import pyrogram
 from pyrogram import Client, filters
 
 from . import config
+from .log import log_filename, maybe_cleanup_old_logs, parse_log_flag, setup_logging
 from .process import _active_tasks, acquire_single_instance
 from .retry import _retry_backoff_delay
 from .handlers import on_all_message
@@ -17,6 +19,9 @@ from .status import (
     _status_loop,
     _use_color,
 )
+
+# События бота (запуск/остановка, команды, запуск Claude, ошибки) — в файл лога.
+logger = logging.getLogger("claude_tg_bot")
 
 
 def _build_client() -> Client:
@@ -64,6 +69,7 @@ async def _start_with_retry(app):
     for attempt in range(1, config.RETRY_LIMIT + 1):
         try:
             await app.start()
+            logger.info("Подключено к Telegram")
             return  # подключились — выходим из цикла
         except KeyboardInterrupt:
             raise
@@ -73,6 +79,8 @@ async def _start_with_retry(app):
                 mins = max(1, round(pause / 60))
                 # Одна короткая строка: без спама повторяющихся ошибок.
                 note = f"{_friendly(str(e))}. Повтор через {mins} мин ({attempt}/{config.RETRY_LIMIT})..."
+                logger.warning("Подключение к Telegram: попытка %s/%s неудачна: %s",
+                               attempt, config.RETRY_LIMIT, _friendly(str(e)))
                 if _use_color():
                     line = f"\033[31m❌ {note}\033[0m"
                 else:
@@ -81,6 +89,8 @@ async def _start_with_retry(app):
                 sys.stdout.flush()
                 await asyncio.sleep(pause)
             else:
+                logger.error("Не удалось подключиться к Telegram после %s попыток: %s",
+                             config.RETRY_LIMIT, _friendly(str(e)))
                 sys.stdout.write(
                     "\n❌ Не удалось подключиться к Telegram после "
                     f"{config.RETRY_LIMIT} попыток: {_friendly(str(e))}\n"
@@ -112,6 +122,19 @@ async def main():
     # Защита от второго экземпляра: если бот уже запущен — выходим, не стартуя.
     if not acquire_single_instance():
         return
+
+    # Логирование (issue #12): включается флагом --log[=уровень]. По умолчанию
+    # (без флага) — не пишем; при интерактивном запуске без лога, но с уже
+    # существующими логами — предлагаем удалить старые.
+    log_enabled, log_level = parse_log_flag(sys.argv)
+    log_path = None
+    if log_enabled:
+        log_path = setup_logging(log_level, log_filename())
+        logger.info("Логирование включено (уровень=%s), файл: %s",
+                    logging.getLevelName(log_level), log_path)
+    else:
+        maybe_cleanup_old_logs()
+
     app = _build_client()
 
     # Важно: используем filters.all, а не filters.INCOMING.
@@ -142,6 +165,7 @@ async def main():
     # с растущей паузой. Ctrl+C прерывает паузу.
     await _start_with_retry(app)
 
+    logger.info("Бот запущен и работает (в %s)", config.SANDBOX_ROOT)
     print("✅ Бот запущен и работает. Жду сообщения в Telegram.")
     print("   Чтобы остановить — нажми Ctrl+C в этом окне (SIGINT).")
 
@@ -164,4 +188,5 @@ async def main():
         # Корректная остановка: отменяем фоновые задачи (они могли остаться
         # зависшими на claude) и глушим Pyrogram. Иначе asyncio.run не может
         # завершить цикл событий, пока живы эти задачи, и Ctrl+C «не работает».
+        logger.info("Бот остановлен")
         await _shutdown(app)

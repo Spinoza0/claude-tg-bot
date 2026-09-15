@@ -58,6 +58,9 @@ class _StatusFilter(logging.Handler):
         with self._lock:
             self._last_error = msg
             self._last_error_ts = time.time()
+        # Дублируем в файл лога (если логирование включено) — это ошибки
+        # Pyrogram (подключение/ретраи), важные для диагностики.
+        logging.getLogger("claude_tg_bot").log(record.levelno, msg)
 
     def snapshot(self) -> tuple[Optional[str], float]:
         with self._lock:

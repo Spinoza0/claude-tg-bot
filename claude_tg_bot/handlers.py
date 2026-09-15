@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import logging
 import time
 from pathlib import Path
 from typing import Optional
@@ -12,6 +13,8 @@ from typing import Optional
 from pyrogram.types import Message
 
 from . import config
+
+logger = logging.getLogger("claude_tg_bot")
 from .runner import run_claude
 from .sessions import find_latest_session, store
 from .access import _allowed, _author, _is_allowed_user
@@ -287,6 +290,8 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
             for attempt in range(1, max_attempts + 1):
                 # Чередуем: попытка 1 — базовые, 2 — alt, 3 — базовые, ...
                 chosen = variants[(attempt - 1) % len(variants)]
+                logger.info("Попытка %s/%s (args=%s)", attempt, max_attempts,
+                            "базовые" if chosen is None else "альтернативные")
                 result = await run_claude(
                     prompt,
                     cwd=project,
@@ -299,6 +304,7 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
                 # следующая попытка (с др. набором, если есть альтернатива).
                 if not _is_model_unavailable(result) or attempt == max_attempts:
                     break
+                logger.warning("Модель недоступна (попытка %s), меняю набор аргументов", attempt)
                 await asyncio.sleep(_retry_backoff_delay(attempt))
             # Ошибка модели/обёртки (отвалилась, вернула is_error) — показываем
             # ❌ в консольном статусе, а не только «Работаю». Текст в Telegram
