@@ -138,5 +138,17 @@ fi
 # --- 4. Запуск бота --------------------------------------------------------
 # Бот сам проверяет single-instance (сканирует запущенные процессы): если
 # уже работает — напечатает об этом и второй раз не стартует.
+# KEEP_AWAKE (из config.env): если true — держим макбук бодрствующим
+# (caffeinate -dimsu), чтобы при засыпании не отключалась сеть и бот не
+# переставал принимать/отвечать на сообщения. По умолчанию false.
+# Если caffeinate недоступен (не macOS) — без него.
+KEEP_AWAKE="false"
+if [ -f "$CONFIG_ENV" ]; then
+    KEEP_AWAKE="$(grep -E '^KEEP_AWAKE=' "$CONFIG_ENV" | tail -1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' || true)"
+fi
 echo "==> Запускаю бота..."
-exec python -m claude_tg_bot
+if { [ "$KEEP_AWAKE" = "true" ] || [ "$KEEP_AWAKE" = "1" ] || [ "$KEEP_AWAKE" = "yes" ]; } && command -v caffeinate >/dev/null 2>&1; then
+    exec caffeinate -dimsu python -m claude_tg_bot
+else
+    exec python -m claude_tg_bot
+fi
