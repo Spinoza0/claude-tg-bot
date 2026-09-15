@@ -1,6 +1,5 @@
 """Юнит-тесты config.py: согласованность версии бота."""
 
-import importlib
 import sys
 import tempfile
 import unittest
@@ -9,7 +8,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import config  # noqa: E402
+import claude_tg_bot  # noqa: E402
+from claude_tg_bot import config  # noqa: E402
 
 
 class TestVersion(unittest.TestCase):
@@ -24,8 +24,7 @@ class TestVersion(unittest.TestCase):
 
     def test_init_version_matches(self):
         # __init__.__version__ читается из config.BOT_VERSION
-        init_mod = importlib.import_module("__init__")
-        self.assertEqual(init_mod.__version__, config.BOT_VERSION)
+        self.assertEqual(claude_tg_bot.__version__, config.BOT_VERSION)
 
 
 class TestFindConfigEnv(unittest.TestCase):

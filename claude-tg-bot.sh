@@ -1,6 +1,6 @@
 #!/bin/bash
 # ================================================================
-# claude-tg-bot-run.sh — запуск Telegram-бота одной командой.
+# claude-tg-bot.sh — запуск Telegram-бота одной командой.
 #
 # Что делает:
 #   1. Создаёт и активирует venv (.venv), если его нет.
@@ -8,12 +8,12 @@
 #   3. Ищет config.env (в ~/.claude-tg-bot, затем рядом со скриптом) и
 #      проверяет, что он заполнен реальными значениями. Если файла нет —
 #      работает с настройками по умолчанию.
-#   4. Запускает бота (python3 claude-tg-bot.py).
+#   4. Запускает бота (python -m claude_tg_bot).
 #      Бот при старте проверяет запущенные процессы: если уже работает —
 #      сообщит об этом и второй раз не стартует.
 #
 # Использование:
-#   bash claude-tg-bot-run.sh
+#   bash claude-tg-bot.sh
 # ================================================================
 set -euo pipefail
 
@@ -55,7 +55,7 @@ echo "==> Python: $PYTHON ($("$PYTHON" -c 'import sys; print(".".join(map(str,sy
 
 # config.env ищется в двух местах (по приоритету, как в config.py):
 #   1. ~/.claude-tg-bot/config.env  — каталог, где лежит папка sandbox;
-#   2. <каталог скрипта>/config.env  — рядом с claude-tg-bot-run.sh.
+#   2. <каталог скрипта>/config.env  — рядом с claude-tg-bot.sh.
 # Корень проектов (PROJECTS_ROOT) и каталог песочницы (SANDBOX_ROOT) печатает
 # сам бот в main — сразу после config.env, чтобы они шли подряд.
 CONFIG_ENV="${HOME}/.claude-tg-bot/config.env"
@@ -139,4 +139,4 @@ fi
 # Бот сам проверяет single-instance (сканирует запущенные процессы): если
 # уже работает — напечатает об этом и второй раз не стартует.
 echo "==> Запускаю бота..."
-exec python "$DIR/claude-tg-bot.py"
+exec python -m claude_tg_bot

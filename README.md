@@ -18,9 +18,10 @@ Telegram-бот для управления **Claude**.
 Telegram-аккаунт  (userbot)
      │  MTProto-клиент [через MT_PROXY, если задан]
      ▼
- bot.py  — хендлеры: текст / команды / вложения
+ claude_tg_bot/  — пакет: хендлеры (handlers), команды (commands), вложения (media),
+                    статус (status), запуск Claude (runner), сессии (sessions)
      ▼
- claude_runner.py — subprocess: <CLAUDE_COMMAND> -p "..." --output-format stream-json
+ runner.py — subprocess: <CLAUDE_COMMAND> -p "..." --output-format stream-json
      ▼
  результат парсится и уходит обратно в Telegram
 ```
@@ -53,11 +54,11 @@ cp config.env.example config.env       # затем заполнить config.en
 `config.env` ищется в **двух местах** (по приоритету):
 
 1. `~/.claude-tg-bot/config.env` — каталог, где лежит папка `sandbox`;
-2. `<каталог claude-tg-bot-run.sh>/config.env` — рядом со скриптом запуска.
+2. `<каталог claude-tg-bot.sh>/config.env` — рядом со скриптом запуска.
 
 **Файл обязателен.** Если его нет ни в одном из двух мест — бот завершает
 работу при старте (падает с сообщением, куда положить `config.env`), а
-`claude-tg-bot-run.sh` сообщает об этом и выходит. Без секретов
+`claude-tg-bot.sh` сообщает об этом и выходит. Без секретов
 (`API_ID`/`API_HASH`/`PHONE`) бот тоже не запустится — `validate()` сообщит
 об этом.
 
@@ -144,12 +145,11 @@ ALLOWED_CHAT_IDS="-1001234567890,-1009876543210"   # несколько — в �
 ## Запуск
 
 ```bash
-bash claude-tg-bot-run.sh    # из директории проекта
+bash claude-tg-bot.sh    # из директории проекта
 ```
 
 Скрипт создаёт `.venv`, ставит зависимости (если их нет), проверяет
-`config.env` и запускает бота. Он предпочтительнее прямого вызова
-`python3 claude-tg-bot.py` — тот требует уже настроенного `.venv` и `config.env`.
+`config.env` и запускает бота (`python -m claude_tg_bot`).
 
 При первом входе MTProto-клиент запросит код подтверждения (придёт в Telegram)
 и один раз пароль двухфакторки, если она включена. После этого создастся

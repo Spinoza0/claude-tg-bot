@@ -1,4 +1,4 @@
-"""Юнит-тесты claude_runner.py: сборка команды запуска Claude."""
+"""Юнит-тесты runner.py: сборка команды запуска Claude."""
 
 import shlex
 import sys
@@ -8,8 +8,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import config  # noqa: E402
-from claude_runner import _build_command  # noqa: E402
+from claude_tg_bot import config  # noqa: E402
+from claude_tg_bot.runner import _build_command  # noqa: E402
 
 
 class TestBuildCommand(unittest.TestCase):

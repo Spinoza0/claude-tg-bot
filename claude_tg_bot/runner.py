@@ -22,11 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional
 
-if __package__:
-    from . import config
-else:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    import config  # noqa: E402
+from . import config
 
 
 @dataclass
@@ -51,11 +47,7 @@ def _build_command(
       это осознанное ограничение первой версии.
     """
     cmd = [config.CLAUDE_COMMAND]
-    # Дополнительные аргументы обёртки (COMMAND_ARGS) — добавляются в начало,
-    # разбиваются на отдельные токены (поддерживают кавычки, напр. значение
-    # с пробелами). Пустая строка ничего не даёт.
     cmd += shlex.split(config.COMMAND_ARGS)
-    # Промпт сразу после -p (как в справке CLI: claude -p "query" ...)
     cmd += ["--print", prompt]
     if resume_session_id:
         # Продолжаем конкретную сессию. --resume сам подхватит и контекст, и
