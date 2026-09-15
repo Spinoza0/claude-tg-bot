@@ -1,4 +1,4 @@
-"""Юнит-тесты session.py: состояние пользователя и валидация имени проекта."""
+"""Юнит-тесты sessions.py: состояние пользователя и валидация имени проекта."""
 
 import sys
 import unittest
@@ -7,7 +7,14 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from session import UserState, is_safe_project_name, has_session, claude_project_dir, find_latest_session  # noqa: E402
+from claude_tg_bot import sessions as _s  # noqa: E402
+from claude_tg_bot.sessions import (  # noqa: E402
+    UserState,
+    claude_project_dir,
+    find_latest_session,
+    has_session,
+    is_safe_project_name,
+)
 
 
 class TestUserState(unittest.TestCase):
@@ -86,7 +93,6 @@ class TestFindLatestSession(unittest.TestCase):
             _t.sleep(0.01)  # чтобы mtime отличался
             os.utime(tmp / "new.jsonl", None)
             # подменяем каталог сессий, чтобы не трогать реальный
-            import session as _s
             orig = _s.claude_project_dir
             _s.claude_project_dir = lambda cwd: tmp
             try:

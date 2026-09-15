@@ -10,18 +10,12 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Optional
 
-# Совместимость с запуском и как пакета, и напрямую (python3 session.py / import session)
-if __package__:
-    from . import config
-else:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    import config  # noqa: E402
+from . import config
 
 
 @dataclass
@@ -137,6 +131,10 @@ class SessionStore:
             for p in root.iterdir()
             if p.is_dir() and is_safe_project_name(p.name)
         )
+
+
+# Единый экземпляр хранилища состояний (общий для всех хендлеров).
+store = SessionStore()
 
 
 def claude_project_dir(cwd: Path) -> Path:

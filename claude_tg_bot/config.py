@@ -5,7 +5,7 @@
 код. Файл ищется в двух местах (по приоритету):
 
   1. ~/.claude-tg-bot/config.env        — каталог, где лежит папка sandbox;
-  2. <каталог claude-tg-bot-run.sh>/config.env  — рядом со скриптом запуска.
+  2. <каталог claude-tg-bot.sh>/config.env  — рядом со скриптом запуска.
 
 Если файла нет ни там, ни там — бот завершает работу (см. validate(): бросает
 RuntimeError с указанием, где должен лежать config.env).
@@ -15,22 +15,23 @@ import os
 from pathlib import Path
 from typing import Iterable, Optional
 
-# Версия бота — показывается в /help и /status. Держим в config, т.к. это
-# единый источник и для пакетного запуска, и для запуска скриптом.
-BOT_VERSION: str = "0.2.4"
+from .version import BOT_VERSION
+
+# Корень проекта (родитель пакета claude_tg_bot) — там лежат run.sh и state.json.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _find_config_env(candidates: Optional[Iterable[Path]] = None) -> Optional[Path]:
     """Найти config.env в порядке приоритета.
 
     Сначала ~/.claude-tg-bot/config.env (каталог, где находится папка sandbox),
-    затем <каталог claude-tg-bot-run.sh>/config.env. Если нет ни там, ни там —
+    затем <каталог claude-tg-bot.sh>/config.env. Если нет ни там, ни там —
     возвращаем None (бот тогда завершает работу, см. validate()).
     """
     if candidates is None:
         candidates = [
             Path.home() / ".claude-tg-bot" / "config.env",  # каталог папки sandbox
-            Path(__file__).resolve().parent / "config.env",  # каталог claude-tg-bot-run.sh
+            _PROJECT_ROOT / "config.env",                    # каталог claude-tg-bot.sh
         ]
     for p in candidates:
         if p.is_file():
@@ -41,7 +42,7 @@ def _find_config_env(candidates: Optional[Iterable[Path]] = None) -> Optional[Pa
 # Все места, где бот ищет config.env (для сообщения об ошибке в validate).
 CONFIG_ENV_CANDIDATES = [
     Path.home() / ".claude-tg-bot" / "config.env",
-    Path(__file__).resolve().parent / "config.env",
+    _PROJECT_ROOT / "config.env",
 ]
 
 
@@ -170,6 +171,23 @@ CLAUDE_TIMEOUT_SECONDS: int = int(os.getenv("CLAUDE_TIMEOUT_SECONDS", "600"))
 
 
 # ---------------------------------------------------------------------------
+# Единая схема повторов при транзиентных сбоях (подключение, отправка, Claude)
+# ---------------------------------------------------------------------------
+# Один механизм ретраев на все места: после N-й неудачи пауза растёт как
+# min(base * multiplier^(N-1), max). При успехе счётчик сбрасывается к base.
+# RETRY_LIMIT — сколько попыток суммарно (включая первую) до отказа.
+RETRY_LIMIT: int = int(os.getenv("RETRY_LIMIT", "5"))
+RETRY_BASE_DELAY: float = float(os.getenv("RETRY_BASE_DELAY", "60"))      # сек
+RETRY_MAX_DELAY: float = float(os.getenv("RETRY_MAX_DELAY", "300"))       # сек (5 мин)
+RETRY_MULTIPLIER: float = float(os.getenv("RETRY_MULTIPLIER", "2.0"))
+
+# Короткие повторы для отправки сообщений/индикаторов в Telegram — секунды,
+# чтобы ответ не «висел» долго (это транзиентные меж-DC ошибки, не потеря сети).
+MESSAGE_RETRY_LIMIT: int = int(os.getenv("MESSAGE_RETRY_LIMIT", "3"))
+MESSAGE_RETRY_DELAY: float = float(os.getenv("MESSAGE_RETRY_DELAY", "2.0"))
+
+
+# ---------------------------------------------------------------------------
 # Управление скачанными вложениями (фото/видео/звук/файл)
 # ---------------------------------------------------------------------------
 # AUTO_DELETE_MEDIA — автоудалять ли вложение после отправки в claude.
@@ -206,8 +224,8 @@ SANDBOX_COMMAND: str = (os.getenv("SANDBOX_COMMAND", "") or "@helpbot").strip()
 # Хранение состояния сессий
 # ---------------------------------------------------------------------------
 
-# Файл с состояниями пользователей (активные проекты и т.п.)
-STATE_FILE: Path = Path(__file__).resolve().parent / "state.json"
+# Файл с состояниями пользователей (активные проекты и т.п.) — в корне проекта.
+STATE_FILE: Path = _PROJECT_ROOT / "state.json"
 
 
 def validate() -> None:

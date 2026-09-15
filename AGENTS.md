@@ -25,7 +25,7 @@
 `git add -A` стейджит весь рабочий каталог и может случайно добавить
 `config.env`, `.session`, логи. Вместо этого добавляй **конкретные файлы**:
 ```bash
-git add claude-tg-bot.py config.py session.py README.md AGENTS.md
+git add claude_tg_bot/ tests/ README.md AGENTS.md claude-tg-bot.sh config.env.example requirements.txt
 ```
 
 ### 2. Перед каждым коммитом — проверь, что стейджедено
@@ -76,8 +76,10 @@ git ls-files | xargs grep -lE \
 
 ## Что разрешено коммитить
 
-- Исходный код: `claude-tg-bot.py`, `config.py`, `session.py`, `claude_runner.py`, `__init__.py`
-- Запуск: `claude-tg-bot-run.sh`
+- Исходный код: весь пакет `claude_tg_bot/` (модули: `config`, `client`, `handlers`,
+  `commands`, `media`, `sandbox`, `status`, `reply`, `access`, `process`, `retry`,
+  `runner`, `sessions`, `version`, `__main__`)
+- Запуск: `claude-tg-bot.sh`
 - Конфиг-пример: `config.env.example` (только фейки!)
 - Документация: `README.md`, `AGENTS.md`
 - `requirements.txt`, `.gitignore`
@@ -103,13 +105,14 @@ git status --short && git diff --cached --name-only | grep -E "config\.env$|\.se
 ## Правила выпуска релизов
 
 Номер версии **обязан обновляться в коде** — он выводится пользователю в `/help`
-и `/status`. Источник истины — `config.py: BOT_VERSION`. Не забывай её менять.
+и `/status`. Источник истины — `claude_tg_bot/version.py: BOT_VERSION`
+(импортируется в `config` и в `__init__.__version__`). Не забывай её менять.
 
 ### Шаги выпуска релиза
 
-1. **Обнови версию в коде**: подними `BOT_VERSION` в `config.py` до нужного
-   номера (напр. `0.3.0` → `0.4.0`). `__init__.py.__version__` берёт значение
-   из `config` автоматически — его править не нужно.
+1. **Обнови версию в коде**: подними `BOT_VERSION` в `claude_tg_bot/version.py`
+   до нужного номера (напр. `0.3.0` → `0.4.0`). `config` и `__init__.__version__`
+   берут значение оттуда автоматически — их править не нужно.
 
 2. **Проверь и актуализируй документацию**: убедись, что `README.md` и
    `AGENTS.md` соответствуют текущему поведению кода (новые команды, настройки,
@@ -148,7 +151,7 @@ git status --short && git diff --cached --name-only | grep -E "config\.env$|\.se
   - `MINOR` — новые фичи (напр. `CLAUDE_PERMISSION_MODE`, `SANDBOX_COMMAND`).
   - `MAJOR` — ломающие изменения.
 - **`BOT_VERSION`** указывается **без `v`** (`0.3.0`), а **тег — с `v`** (`v0.3.0`).
-- `__version__` в `__init__.py` НЕ править руками — он читает `config.BOT_VERSION`.
+- `__version__` в `__init__.py` НЕ править руками — он читает `version.BOT_VERSION`.
 
 ---
 
