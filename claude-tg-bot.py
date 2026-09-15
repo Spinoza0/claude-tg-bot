@@ -33,12 +33,12 @@ from pyrogram.types import Message
 if __package__ and __package__ != "__main__":
     from . import config
     from .claude_runner import format_command_hint, run_claude
-    from .session import SessionStore, is_safe_project_name, has_session
+    from .session import SessionStore, is_safe_project_name, find_latest_session
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import config  # noqa: E402
     from claude_runner import format_command_hint, run_claude  # noqa: E402
-    from session import SessionStore, is_safe_project_name, has_session  # noqa: E402
+    from session import SessionStore, is_safe_project_name, find_latest_session  # noqa: E402
 
 store = SessionStore()
 
@@ -909,7 +909,7 @@ async def on_command(client, message: Message, text: str, sandbox: bool = False)
             return
         st.set_active(sandbox, str(proj), name)
         # НЕ сбрасываем сессию: на этом проекте своя сессия, при следующем
-        # запросе она восстановится с диска через has_session.
+        # запросе find_latest_session подхватит её с диска для --resume.
         store.update(st)
         await _reply(message, f"✅ Переключился на проект: {name}")
 
@@ -930,7 +930,8 @@ async def on_command(client, message: Message, text: str, sandbox: bool = False)
         lines = [f"📊 Статус (v{config.BOT_VERSION}):\nПроект: {st.active_name(sandbox) or '(не выбран)'}"]
         lines.append(f"Корень проектов ({label}): {root}")
         lines.append(f"Активный путь: {active or '/'}")
-        lines.append(f"Сессия: {'продолжаем последнюю' if has_session(Path(active)) else '(новая)'}")
+        _sid = find_latest_session(Path(active))
+        lines.append(f"Сессия: {_sid or '(новая)'}")
         lines.append(
             f"Запущено ботом: {len(_bot_proc_pids)} задач, "
             f"активных: {len(_active_tasks)}"
@@ -1342,11 +1343,12 @@ async def on_chat(client, message: Message, text: str, sandbox: bool = False):
         # silent: если каталога вложений нет — молча идём дальше, в Claude.
         await _clear_media(message, project_root, sandbox=sandbox, root=str(root), silent=True)
 
-    continue_session = has_session(Path(project_root))
-    _start_bg(_run_and_reply(client, message, st, text, [], continue_session=continue_session, cwd=project_root))
+    # session_id не передаём — _run_and_reply сам найдёт последнюю сессию
+    # каталога и сделает --resume, либо запустит новую.
+    _start_bg(_run_and_reply(client, message, st, text, [], cwd=project_root))
 
 
-async def _run_and_reply(client, message, st, prompt: str, image_paths, continue_session=False, cwd=None):
+async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_session_id=None, cwd=None):
     """Общая точка: запуск claude + вывод результата.
 
     Перед обработкой шлём «работаю», запоминаем его id, а когда claude ответил —
@@ -1359,16 +1361,14 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, continue
     (активный проект). Для @helpbot передаётся config.SANDBOX_ROOT (песочница
     песочницы).
 
-    continue_session — если True, продолжаем последнюю сессию каталога (--continue);
-    иначе запускается новая.
+    resume_session_id — id сессии для продолжения через --resume. Если не задан
+    явно — сами находим последнюю сессию каталога с диска (find_latest_session),
+    чтобы все точки входа (on_chat, on_photo, @helpbot) вели себя одинаково.
+    Если сессии нет — запускается новая, и её id вернётся в result.session_id.
     """
     project = Path(cwd) if cwd else Path(st.project_root)
-    # Единый алгоритм для любых сообщений (с вложениями и без): продолжаем
-    # последнюю сессию каталога с диска (как локальный --continue), либо новую.
-    # Если продолжение не задано явно — сами проверяем наличие сессии на диске,
-    # чтобы все точки входа (on_chat, on_photo, @helpbot) вели себя одинаково.
-    if not continue_session:
-        continue_session = has_session(project)
+    if not resume_session_id:
+        resume_session_id = find_latest_session(project)
     # Помечаем чат «занятым», чтобы бот не реагировал на собственные ответы
     # Посылаем индикатор работы и запоминаем его id (chat_id + message_id).
     # Индикатор шлём с ретраями (как и ответ): при меж-DC ошибке Telegram
@@ -1406,7 +1406,7 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, continue
             result = await run_claude(
                 prompt,
                 cwd=project,
-                continue_session=continue_session,
+                resume_session_id=resume_session_id,
                 image_paths=image_paths,
                 proc_registry=_bot_proc_pids,
             )
@@ -1415,8 +1415,6 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, continue
             # уходит как есть, чтобы пользователь видел причину.
             if _is_run_error(result):
                 _report_run_error(result.text or f"Ошибка Claude (код {result.exit_code})")
-            # Сессия хранится на диске: следующий запрос через has_session
-            # сам подхватит продолжение. Сохранять session_id в state не нужно.
             text = result.text
             if not text:
                 # При /clear Claude сбрасывает контекст и отвечает пустотой —

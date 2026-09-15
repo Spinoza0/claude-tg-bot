@@ -159,9 +159,7 @@ def claude_project_dir(cwd: Path) -> Path:
 def has_session(cwd: Path) -> bool:
     """Есть ли хоть одна сессия Claude в каталоге cwd.
 
-    Проверяем наличие .jsonl в ~/.claude/projects/<slug-cwd>/. Конкретный
-    session_id нам не нужен: для продолжения достаточно флага --continue,
-    который Claude сам разрешает в последнюю сессию каталога.
+    Проверяем наличие .jsonl в ~/.claude/projects/<slug-cwd>/.
     """
     d = claude_project_dir(cwd)
     if not d.exists():
@@ -170,3 +168,23 @@ def has_session(cwd: Path) -> bool:
         return any(d.glob("*.jsonl"))
     except OSError:
         return False
+
+
+def find_latest_session(cwd: Path) -> Optional[str]:
+    """session_id самой свежей сессии Claude в каталоге cwd, либо None.
+
+    Возвращает имя самого свежего по mtime .jsonl (без расширения) внутри
+    ~/.claude/projects/<slug-cwd>/. Это и есть session_id, который можно
+    передать в --resume. Если сессий нет — None (запустится новая).
+    """
+    d = claude_project_dir(cwd)
+    if not d.exists():
+        return None
+    try:
+        files = [p for p in d.glob("*.jsonl") if p.is_file()]
+    except OSError:
+        return None
+    if not files:
+        return None
+    newest = max(files, key=lambda p: p.stat().st_mtime)
+    return newest.stem

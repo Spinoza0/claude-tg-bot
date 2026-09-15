@@ -38,13 +38,15 @@ class ClaudeResult:
     exit_code: int = 0
 
 
-def _build_command(prompt: str, cwd: Path, continue_session: bool = False) -> list[str]:
+def _build_command(
+    prompt: str, cwd: Path, resume_session_id: Optional[str] = None
+) -> list[str]:
     """Собрать argv для Claude.
 
-    - С --continue продолжаем последнюю сессию каталога (как локальный
-      claude --continue): контекст сохраняется. Сам session_id искать не нужно —
-      Claude разрешает его по каталогу.
-    - Без --continue просто новый запрос из -p — новая сессия.
+    - С resume_session_id продолжаем КОНКРЕТНУЮ сессию через --resume <id>.
+      Явное --resume надёжнее --continue: интерактивный claude -c не находит
+      сессии, созданные через -p (--print), а --resume <id> находит всегда.
+    - Без id — просто новый запрос из -p: новая сессия.
     - Т.к. это -p (печать), код выполняется неинтерактивно; для правки кода
       это осознанное ограничение первой версии.
     """
@@ -55,10 +57,12 @@ def _build_command(prompt: str, cwd: Path, continue_session: bool = False) -> li
     cmd += shlex.split(config.COMMAND_ARGS)
     # Промпт сразу после -p (как в справке CLI: claude -p "query" ...)
     cmd += ["--print", prompt]
-    if continue_session:
-        # Продолжаем последнюю сессию каталога. --continue сам находит самый
-        # свежий session_id, передавать его явно не нужно.
-        cmd += ["--continue"]
+    if resume_session_id:
+        # Продолжаем конкретную сессию. --resume сам подхватит и контекст, и
+        # права/историю именно этого id (в отличие от --continue, который
+        # ориентируется на индекс интерактивных сессий и может не найти
+        # сессию, созданную через -p).
+        cmd += ["--resume", resume_session_id]
     # Авто-режим: бот запускает Claude неинтерактивно (-p), и никто не может
     # ответить на запрос разрешения из терминала. Поэтому передаём режим
     # --permission-mode из настроек (по умолчанию bypassPermissions — полный
@@ -122,11 +126,15 @@ def _human_result(lines: Iterable[str]) -> ClaudeResult:
 async def run_claude(
     prompt: str,
     cwd: Path,
-    continue_session: bool = False,
+    resume_session_id: Optional[str] = None,
     image_paths: Optional[list[Path]] = None,
     proc_registry: Optional[set[int]] = None,
 ) -> ClaudeResult:
     """Запустить Claude с промптом, вернуть результат.
+
+    resume_session_id — id сессии для --resume (продолжить конкретную сессию).
+    Если None — запускается новая сессия (после ответа id вернётся в
+    result.session_id).
 
     image_paths: пути к файлам-картинкам, которые добавятся в промпт как
     @ссылки (Claude принимает @path как attachment).
@@ -158,7 +166,7 @@ async def run_claude(
             # чтобы не воспринималась как задание.
             final_prompt = " ".join(refs)
 
-    cmd = _build_command(final_prompt, cwd, continue_session)
+    cmd = _build_command(final_prompt, cwd, resume_session_id)
     run_cwd = str(cwd)
 
     # Ограничение длины промпта — защита от гигантских сообщений
