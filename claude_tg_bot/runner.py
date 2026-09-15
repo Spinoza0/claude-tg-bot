@@ -35,7 +35,10 @@ class ClaudeResult:
 
 
 def _build_command(
-    prompt: str, cwd: Path, resume_session_id: Optional[str] = None
+    prompt: str,
+    cwd: Path,
+    resume_session_id: Optional[str] = None,
+    command_args: Optional[str] = None,
 ) -> list[str]:
     """Собрать argv для Claude.
 
@@ -45,9 +48,12 @@ def _build_command(
     - Без id — просто новый запрос из -p: новая сессия.
     - Т.к. это -p (печать), код выполняется неинтерактивно; для правки кода
       это осознанное ограничение первой версии.
+    - command_args — переопределяет набор args (для смены модели при её
+      недоступности). None — используются базовые config.COMMAND_ARGS.
     """
     cmd = [config.CLAUDE_COMMAND]
-    cmd += shlex.split(config.COMMAND_ARGS)
+    args = config.COMMAND_ARGS if command_args is None else command_args
+    cmd += shlex.split(args)
     cmd += ["--print", prompt]
     if resume_session_id:
         # Продолжаем конкретную сессию. --resume сам подхватит и контекст, и
@@ -121,6 +127,7 @@ async def run_claude(
     resume_session_id: Optional[str] = None,
     image_paths: Optional[list[Path]] = None,
     proc_registry: Optional[set[int]] = None,
+    command_args: Optional[str] = None,
 ) -> ClaudeResult:
     """Запустить Claude с промптом, вернуть результат.
 
@@ -135,6 +142,9 @@ async def run_claude(
     именно этим ботом. Сюда добавляется pid при старте и удаляется при выходе.
     По нему бот может прибить ТОЛЬКО СВОИ процессы (команда /kill), не трогая
     чужие/ручные сессии Claude.
+
+    command_args: переопределяет набор аргументов (смена модели при её
+    недоступности). None — базовые config.COMMAND_ARGS.
     """
     cwd = Path(cwd)
     if not cwd.exists():
@@ -158,7 +168,7 @@ async def run_claude(
             # чтобы не воспринималась как задание.
             final_prompt = " ".join(refs)
 
-    cmd = _build_command(final_prompt, cwd, resume_session_id)
+    cmd = _build_command(final_prompt, cwd, resume_session_id, command_args)
     run_cwd = str(cwd)
 
     # Ограничение длины промпта — защита от гигантских сообщений

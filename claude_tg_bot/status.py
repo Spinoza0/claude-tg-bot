@@ -96,6 +96,22 @@ def _is_run_error(result) -> bool:
     return result.exit_code != 0 or result.text.lstrip().startswith(_RUN_ERR_MARKERS)
 
 
+# Маркеры того, что НЕДОСТУПНА именно МОДЕЛЬ/провайдер (а не сбой запуска,
+# длинный промпт и т.п.). По ним бот решает переключить модель на
+# COMMAND_ARGS_ALTERNATIVE (issue #5). Сюда попадают ответы обёртки вида
+# "API Error: 502 Cannot connect ..." или "model not found"/"rate limit".
+_MODEL_UNAVAILABLE_MARKERS = (
+    "API Error", "Cannot connect", "502", "503",
+    "model not found", "model unavailable", "rate limit", "upstream",
+)
+
+
+def _is_model_unavailable(result) -> bool:
+    """True, если ответ говорит о недоступности модели (её надо сменить)."""
+    text = result.text.lstrip()
+    return any(m in text for m in _MODEL_UNAVAILABLE_MARKERS)
+
+
 # ANSI-цвета для статуса в терминале (зелёный «работаю», красный «ошибка»).
 # Отключаются, если вывод не является TTY (напр. перенаправление в файл) —
 # тогда оставляем только эмодзи, без экранирующих кодов.
