@@ -147,8 +147,9 @@ if [ -f "$CONFIG_ENV" ]; then
     KEEP_AWAKE="$(grep -E '^KEEP_AWAKE=' "$CONFIG_ENV" | tail -1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' || true)"
 fi
 echo "==> Запускаю бота..."
+# "$@" внизу — проброс аргументов вызова (напр. --log=info) в python -m.
 if { [ "$KEEP_AWAKE" = "true" ] || [ "$KEEP_AWAKE" = "1" ] || [ "$KEEP_AWAKE" = "yes" ]; } && command -v caffeinate >/dev/null 2>&1; then
-    exec caffeinate -dimsu python -m claude_tg_bot
+    exec caffeinate -dimsu python -m claude_tg_bot "$@"
 else
-    exec python -m claude_tg_bot
+    exec python -m claude_tg_bot "$@"
 fi

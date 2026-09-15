@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import shlex
 import signal
@@ -23,6 +24,9 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from . import config
+
+# События запуска Claude (команда, id сессии, ошибки) — в файл лога.
+logger = logging.getLogger("claude_tg_bot")
 
 
 @dataclass
@@ -170,6 +174,7 @@ async def run_claude(
 
     cmd = _build_command(final_prompt, cwd, resume_session_id, command_args)
     run_cwd = str(cwd)
+    logger.info("Запуск Claude в %s (пакет args: %s)", run_cwd, command_args or "базовые")
 
     # Ограничение длины промпта — защита от гигантских сообщений
     if len(final_prompt) > config.MAX_PROMPT_LENGTH:
@@ -260,6 +265,7 @@ async def run_claude(
         await asyncio.gather(*tasks, return_exceptions=True)
         tail = _tail_stderr(err_lines, proc_pid=proc.pid, limit=8)
         res = ClaudeResult()
+        logger.warning("Превышен таймаут запуска Claude в %s", run_cwd)
         res.text = "⏱️ Превышен таймаут. Попробуй сократить запрос."
         # Подмешиваем причину из stderr, если proxy оставил диагностику.
         if tail:
@@ -289,6 +295,9 @@ async def run_claude(
         tail = _tail_stderr(err_lines, proc_pid=proc.pid)
         if tail:
             res.text = f"⚠️ Ошибка запуска Claude (код {res.exit_code}):\n{tail}"
+    if res.exit_code != 0:
+        logger.error("Запуск Claude завершился с кодом %s: %s", res.exit_code,
+                     (res.text or "").splitlines()[0][:200] if res.text else "без текста")
     return res
 
 
