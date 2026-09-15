@@ -159,6 +159,29 @@ class TestRunError(unittest.TestCase):
         self.assertIn("API Error", last[1])
 
 
+class TestModelUnavailable(unittest.TestCase):
+    """_is_model_unavailable: определяет недоступность модели (issue #5)."""
+
+    def _res(self, text, exit_code=0):
+        return type("R", (), {"text": text, "exit_code": exit_code})()
+
+    def test_model_unavailable_markers(self):
+        # Классические признаки недоступности модели/провайдера
+        self.assertTrue(st._is_model_unavailable(self._res("API Error: 502 Cannot connect ...")))
+        self.assertTrue(st._is_model_unavailable(self._res("Cannot connect to host")))
+        self.assertTrue(st._is_model_unavailable(self._res("... 503 Service Unavailable")))
+        self.assertTrue(st._is_model_unavailable(self._res("model not found")))
+
+    def test_normal_answer_not_unavailable(self):
+        # Обычный ответ модели — не ошибка доступности
+        self.assertFalse(st._is_model_unavailable(self._res("Курс доллара на завтра...")))
+        self.assertFalse(st._is_model_unavailable(self._res("")))
+
+    def test_other_error_not_unavailable(self):
+        # Сбой запуска / длинный промпт — это НЕ недоступность модели
+        self.assertFalse(st._is_model_unavailable(self._res("⚠️ Ошибка: Промпт слишком длинный")))
+
+
 class TestDrawStatus(unittest.TestCase):
     """_draw_status перерисовывает блок на месте, не накапливая каскад строк."""
 

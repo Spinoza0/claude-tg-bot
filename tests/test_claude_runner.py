@@ -50,6 +50,20 @@ class TestBuildCommand(unittest.TestCase):
         else:
             self.assertNotIn("--append-system-prompt", cmd)
 
+    def test_command_args_override(self):
+        # command_args переопределяет базовые (смена модели): передаётся вместо
+        # config.COMMAND_ARGS.
+        alt = "--provider openai-compatible --model other"
+        cmd = _build_command("промпт", Path("/tmp"), None, command_args=alt)
+        self.assertIn("--provider", cmd)
+        self.assertIn("other", cmd)
+
+    def test_command_args_default_is_base(self):
+        # Без аргумента — используются базовые config.COMMAND_ARGS.
+        cmd = _build_command("промпт", Path("/tmp"), None)
+        for a in shlex.split(config.COMMAND_ARGS):
+            self.assertIn(a, cmd)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,7 +16,7 @@ from .runner import run_claude
 from .sessions import find_latest_session, store
 from .access import _allowed, _author, _is_allowed_user
 from .process import _active_tasks, _bot_proc_pids, _start_bg
-from .retry import _run_with_retry
+from .retry import _retry_backoff_delay, _run_with_retry
 from .commands import _clear_media, on_command
 from .media import (
     _delete_path,
@@ -28,7 +28,7 @@ from .media import (
 )
 from .reply import _reply, _send_with_retry
 from .sandbox import _is_sandbox_message, _strip_sandbox_prefix
-from .status import _is_run_error, _report_run_error
+from .status import _is_model_unavailable, _is_run_error, _report_run_error
 
 
 async def on_sandbox(client, message: Message):
@@ -273,13 +273,33 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
 
     try:
         try:
-            result = await run_claude(
-                prompt,
-                cwd=project,
-                resume_session_id=resume_session_id,
-                image_paths=image_paths,
-                proc_registry=_bot_proc_pids,
-            )
+            # Смена модели при её недоступности (issue #5): если основная модель
+            # не ответила (API Error / Cannot connect / 502 / 503), повторяем
+            # запрос, подставляя COMMAND_ARGS_ALTERNATIVE, и чередуем базовый и
+            # альтернативный наборы до RETRY_LIMIT, с паузой _retry_backoff_delay.
+            # Если alt-набор не задан — просто повторяем базовыми аргументами.
+            variants = [None]
+            if config.COMMAND_ARGS_ALTERNATIVE:
+                variants.append(config.COMMAND_ARGS_ALTERNATIVE)
+            max_attempts = max(1, config.RETRY_LIMIT)
+
+            result = None
+            for attempt in range(1, max_attempts + 1):
+                # Чередуем: попытка 1 — базовые, 2 — alt, 3 — базовые, ...
+                chosen = variants[(attempt - 1) % len(variants)]
+                result = await run_claude(
+                    prompt,
+                    cwd=project,
+                    resume_session_id=resume_session_id,
+                    image_paths=image_paths,
+                    proc_registry=_bot_proc_pids,
+                    command_args=chosen,
+                )
+                # Модель ответила или исчерпали лимит — выходим; иначе пауза и
+                # следующая попытка (с др. набором, если есть альтернатива).
+                if not _is_model_unavailable(result) or attempt == max_attempts:
+                    break
+                await asyncio.sleep(_retry_backoff_delay(attempt))
             # Ошибка модели/обёртки (отвалилась, вернула is_error) — показываем
             # ❌ в консольном статусе, а не только «Работаю». Текст в Telegram
             # уходит как есть, чтобы пользователь видел причину.
