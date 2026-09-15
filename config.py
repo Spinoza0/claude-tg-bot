@@ -17,7 +17,7 @@ from typing import Iterable, Optional
 
 # Версия бота — показывается в /help и /status. Держим в config, т.к. это
 # единый источник и для пакетного запуска, и для запуска скриптом.
-BOT_VERSION: str = "0.2.2"
+BOT_VERSION: str = "0.2.4"
 
 
 def _find_config_env(candidates: Optional[Iterable[Path]] = None) -> Optional[Path]:

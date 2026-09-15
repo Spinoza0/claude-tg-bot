@@ -7,7 +7,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from session import UserState, is_safe_project_name, has_session, claude_project_dir  # noqa: E402
+from session import UserState, is_safe_project_name, has_session, claude_project_dir, find_latest_session  # noqa: E402
 
 
 class TestUserState(unittest.TestCase):
@@ -61,6 +61,38 @@ class TestHasSession(unittest.TestCase):
             d.name,
             "-Users-sintyurin-ivan-StudioProjects-x",
         )
+
+
+class TestFindLatestSession(unittest.TestCase):
+    """find_latest_session: отдаёт самый свежий .jsonl (для --resume)."""
+
+    def _mk(self, tmp: Path, names):
+        for n in names:
+            (tmp / n).touch()
+
+    def test_returns_none_when_empty(self):
+        self.assertIsNone(find_latest_session(Path("/nonexistent/xyz-123")))
+
+    def test_returns_newest_by_mtime(self, ):
+        import tempfile
+        import os
+        import time as _t
+        d = claude_project_dir(PROJECT_ROOT)
+        # Пусть каталог реальный; создаём два файла с разным mtime.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            (tmp / "old.jsonl").touch()
+            (tmp / "new.jsonl").touch()
+            _t.sleep(0.01)  # чтобы mtime отличался
+            os.utime(tmp / "new.jsonl", None)
+            # подменяем каталог сессий, чтобы не трогать реальный
+            import session as _s
+            orig = _s.claude_project_dir
+            _s.claude_project_dir = lambda cwd: tmp
+            try:
+                self.assertEqual(find_latest_session(PROJECT_ROOT), "new")
+            finally:
+                _s.claude_project_dir = orig
 
 
 class TestIsSafeProjectName(unittest.TestCase):

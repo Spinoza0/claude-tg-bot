@@ -33,12 +33,12 @@ from pyrogram.types import Message
 if __package__ and __package__ != "__main__":
     from . import config
     from .claude_runner import format_command_hint, run_claude
-    from .session import SessionStore, is_safe_project_name, has_session
+    from .session import SessionStore, is_safe_project_name, find_latest_session
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import config  # noqa: E402
     from claude_runner import format_command_hint, run_claude  # noqa: E402
-    from session import SessionStore, is_safe_project_name, has_session  # noqa: E402
+    from session import SessionStore, is_safe_project_name, find_latest_session  # noqa: E402
 
 store = SessionStore()
 
@@ -249,8 +249,8 @@ async def _send_with_retry(message: Message, text: str, attempts: int = 3, delay
 # ретраи) через стандартный logging с логгерами "pyrogram.*" и печатает их
 # потоком в stderr. Это засоряет консоль и пугает. Вместо этого перехватываем
 # логи Pyrogram своим Handler'ом: храним ПОСЛЕДНЮЮ ошибку, глушим потоковый
-# вывод, а в консоль печатаем ОДНУ живую строку статуса — «● работаю» либо
-# «✗ Ошибка: <последнее сообщение>», и только при смене состояния.
+# вывод, а в консоль печатаем блок статуса — «🟢 Работаю» либо
+# «❌ Ошибка: <последнее сообщение>», и только при смене состояния.
 
 # Сколько секунд без новых ошибок считать, что всё снова работает.
 _STATUS_OK_AFTER = 4.0
@@ -303,8 +303,8 @@ class _StatusFilter(logging.Handler):
 
 _STATUS_FILTER = _StatusFilter()
 
-# Ошибка запуска Claude (от valа модели/обёртки): хранится отдельно от логов
-# pygame (тот — про связь с Telegram). Пишется из _run_and_reply при
+# Ошибка запуска Claude (отвала модели/обёртки): хранится отдельно от логов
+# pyrogram (тот — про связь с Telegram). Пишется из _run_and_reply при
 # ненулевом exit_code или тексте с признаком ошибки, читается _status_loop.
 # Так консоль показывает ❌ и при отвале модели, а не только при обрыве сети.
 _RUN_ERR_LOCK = threading.Lock()
@@ -370,31 +370,23 @@ def _stamp() -> str:
 
 
 def _draw_status(lines: list[str]) -> None:
-    """Перерисовать блок статуса на месте, не трогая чужой вывод.
+    """Перерисовать блок статуса на месте, не трогая вывод выше блока.
 
     lines — строки блока: первая — состояние работы, вторая (если есть) —
-    последняя ошибка. Стираем РОВНО предыдущие строки блока (построчно через
-    \\033[2K), не задевая сообщения выше/ниже — иначе блок затирает их, как
-    shell-промпт или лог pyrogram. Затем печатаем новые строки.
+    последняя ошибка. Поднимаемся к началу прошлого блока (\\033[F) и стираем
+    всё от курсора до конца экрана (\\033[J) — это снимает и старый блок целиком
+    (при смене высоты 1↔2 не остаётся «хвоста»), не задевая строки выше. Затем
+    печатаем новый блок. \\033[2K перед строкой добивает остатки при переносе.
     """
     global _STATUS_PREV_LINES
     out = sys.stdout
-    prev = _STATUS_PREV_LINES
-    if prev:
-        # Подняться на высоту прошлого блока и стереть ЕГО строки (2K), не
-        # задевая сообщения выше/ниже.
-        out.write(f"\033[{prev}A\r")
-        for i in range(prev):
-            out.write("\033[2K")
-            if i != prev - 1:
-                out.write("\033[1B")
-        # Вернуться к верхней строке блока, чтобы печатать сверху вниз.
-        if prev > 1:
-            out.write(f"\033[{prev - 1}A\r")
+    if _STATUS_PREV_LINES:
+        out.write(f"\033[{_STATUS_PREV_LINES}F")
+        out.write("\033[J")
     for i, line in enumerate(lines):
-        out.write("\033[2K" + line)
-        if i != len(lines) - 1:
+        if i:
             out.write("\n")
+        out.write("\033[2K" + line)
     out.flush()
     _STATUS_PREV_LINES = len(lines)
 
@@ -909,7 +901,7 @@ async def on_command(client, message: Message, text: str, sandbox: bool = False)
             return
         st.set_active(sandbox, str(proj), name)
         # НЕ сбрасываем сессию: на этом проекте своя сессия, при следующем
-        # запросе она восстановится с диска через has_session.
+        # запросе find_latest_session подхватит её с диска для --resume.
         store.update(st)
         await _reply(message, f"✅ Переключился на проект: {name}")
 
@@ -930,7 +922,8 @@ async def on_command(client, message: Message, text: str, sandbox: bool = False)
         lines = [f"📊 Статус (v{config.BOT_VERSION}):\nПроект: {st.active_name(sandbox) or '(не выбран)'}"]
         lines.append(f"Корень проектов ({label}): {root}")
         lines.append(f"Активный путь: {active or '/'}")
-        lines.append(f"Сессия: {'продолжаем последнюю' if has_session(Path(active)) else '(новая)'}")
+        _sid = find_latest_session(Path(active))
+        lines.append(f"Сессия: {_sid or '(новая)'}")
         lines.append(
             f"Запущено ботом: {len(_bot_proc_pids)} задач, "
             f"активных: {len(_active_tasks)}"
@@ -1342,11 +1335,12 @@ async def on_chat(client, message: Message, text: str, sandbox: bool = False):
         # silent: если каталога вложений нет — молча идём дальше, в Claude.
         await _clear_media(message, project_root, sandbox=sandbox, root=str(root), silent=True)
 
-    continue_session = has_session(Path(project_root))
-    _start_bg(_run_and_reply(client, message, st, text, [], continue_session=continue_session, cwd=project_root))
+    # session_id не передаём — _run_and_reply сам найдёт последнюю сессию
+    # каталога и сделает --resume, либо запустит новую.
+    _start_bg(_run_and_reply(client, message, st, text, [], cwd=project_root))
 
 
-async def _run_and_reply(client, message, st, prompt: str, image_paths, continue_session=False, cwd=None):
+async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_session_id=None, cwd=None):
     """Общая точка: запуск claude + вывод результата.
 
     Перед обработкой шлём «работаю», запоминаем его id, а когда claude ответил —
@@ -1359,16 +1353,14 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, continue
     (активный проект). Для @helpbot передаётся config.SANDBOX_ROOT (песочница
     песочницы).
 
-    continue_session — если True, продолжаем последнюю сессию каталога (--continue);
-    иначе запускается новая.
+    resume_session_id — id сессии для продолжения через --resume. Если не задан
+    явно — сами находим последнюю сессию каталога с диска (find_latest_session),
+    чтобы все точки входа (on_chat, on_photo, @helpbot) вели себя одинаково.
+    Если сессии нет — запускается новая, и её id вернётся в result.session_id.
     """
     project = Path(cwd) if cwd else Path(st.project_root)
-    # Единый алгоритм для любых сообщений (с вложениями и без): продолжаем
-    # последнюю сессию каталога с диска (как локальный --continue), либо новую.
-    # Если продолжение не задано явно — сами проверяем наличие сессии на диске,
-    # чтобы все точки входа (on_chat, on_photo, @helpbot) вели себя одинаково.
-    if not continue_session:
-        continue_session = has_session(project)
+    if not resume_session_id:
+        resume_session_id = find_latest_session(project)
     # Помечаем чат «занятым», чтобы бот не реагировал на собственные ответы
     # Посылаем индикатор работы и запоминаем его id (chat_id + message_id).
     # Индикатор шлём с ретраями (как и ответ): при меж-DC ошибке Telegram
@@ -1406,7 +1398,7 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, continue
             result = await run_claude(
                 prompt,
                 cwd=project,
-                continue_session=continue_session,
+                resume_session_id=resume_session_id,
                 image_paths=image_paths,
                 proc_registry=_bot_proc_pids,
             )
@@ -1415,8 +1407,6 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, continue
             # уходит как есть, чтобы пользователь видел причину.
             if _is_run_error(result):
                 _report_run_error(result.text or f"Ошибка Claude (код {result.exit_code})")
-            # Сессия хранится на диске: следующий запрос через has_session
-            # сам подхватит продолжение. Сохранять session_id в state не нужно.
             text = result.text
             if not text:
                 # При /clear Claude сбрасывает контекст и отвечает пустотой —
@@ -1539,8 +1529,8 @@ async def main():
     print("✅ Бот запущен и работает. Жду сообщения в Telegram.")
     print("   Чтобы остановить — нажми Ctrl+C в этом окне (SIGINT).")
 
-    # Фоновая задача: держит в консоли одну живую строку статуса «Работаю» /
-    # «✗ Ошибка: …». Останавливается вместе с ботом.
+    # Фоновая задача: держит в консоли блок статуса «Работаю» / «❌ Ошибка: …».
+    # Останавливается вместе с ботом.
     stop_status = asyncio.Event()
     status_task = asyncio.create_task(_status_loop(stop_status))
 

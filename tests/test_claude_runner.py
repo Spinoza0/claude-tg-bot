@@ -26,13 +26,14 @@ class TestBuildCommand(unittest.TestCase):
         self.assertIn("--permission-mode", cmd)
         self.assertIn(config.CLAUDE_PERMISSION_MODE, cmd)
 
-    def test_continue(self):
-        cmd = _build_command("промпт", Path("/tmp"), continue_session=True)
-        self.assertIn("--continue", cmd)
+    def test_resume_with_id(self):
+        cmd = _build_command("промпт", Path("/tmp"), resume_session_id="abc-123")
+        idx = cmd.index("--resume")
+        self.assertEqual(cmd[idx + 1], "abc-123")
 
-    def test_no_continue_without_session(self):
-        cmd = _build_command("промпт", Path("/tmp"), continue_session=False)
-        self.assertFalse(any(c.startswith("--continue") for c in cmd))
+    def test_no_resume_without_id(self):
+        cmd = _build_command("промпт", Path("/tmp"))
+        self.assertNotIn("--resume", cmd)
 
     def test_command_args_appended_when_configured(self):
         cmd = _build_command("промпт", Path("/tmp"), None)
