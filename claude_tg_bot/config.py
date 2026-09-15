@@ -209,6 +209,13 @@ AUTO_DELETE_MEDIA: bool = _env_bool("AUTO_DELETE_MEDIA", False)
 #   permanent  — удалить навсегда (без возможности восстановить).
 DELETE_MODE: str = (os.getenv("DELETE_MODE", "trash").strip().lower() or "trash")
 
+# KEEP_AWAKE — не давать макбуку засыпать, пока бот работает (caffeinate -dimsu).
+#   true  — держать систему бодрствующей (иначе при засыпании отключается сеть
+#           и бот перестаёт принимать/отвечать на сообщения).
+#   false — ничего не менять. По умолчанию выключено (решает пользователь).
+#   В claude-tg-bot.sh читается как переменная окружения config.env.
+KEEP_AWAKE: bool = _env_bool("KEEP_AWAKE", False)
+
 
 # ---------------------------------------------------------------------------
 # Песочница (@helpbot)
