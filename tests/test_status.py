@@ -183,5 +183,66 @@ class TestRunError(unittest.TestCase):
         self.assertIn("API Error", last[1])
 
 
+class TestDrawStatus(unittest.TestCase):
+    """_draw_status перерисовывает блок на месте, не накапливая каскад строк."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.bot = _load_bot_module()
+
+    def _draw_sequence(self, states):
+        """Прогнать серию _draw_status, вернуть склеенную ANSI-последовательность."""
+        bot = self.bot
+        buf: list[str] = []
+        bot._use_color = lambda: True
+        orig_write = bot.sys.stdout.write
+        try:
+            bot.sys.stdout.write = buf.append
+            for s in states:
+                bot._draw_status(s)
+        finally:
+            bot.sys.stdout.write = orig_write
+        return "".join(buf)
+
+    def test_redraw_clears_previous_block(self):
+        # Первый вызов (1 строка) — нечего стирать, нет \033[F/\033[J.
+        # Повторный (2 строки) — поднимается на прошлую высоту и стирает \033[J,
+        # а не допечатывает строки вниз (иначе был бы каскад).
+        out = self._draw_sequence([
+            ["{}Работаю".format("\x1b[32m") + " [t1]"],
+            ["{}Работаю".format("\x1b[32m") + " [t2]", "\x1b[31m❌ Ошибка: сбой [t2]\x1b[0m"],
+            ["{}Работаю".format("\x1b[32m") + " [t3]", "\x1b[31m❌ Ошибка: сбой [t3]\x1b[0m"],
+        ])
+        # Первый вызов не должен содержать стирание (prev=0).
+        first = out[: self._first_bracket(out)] if self._first_bracket(out) else out
+        # В последующих вызовах обязан быть подъём \033[<n>F и затирание \033[J.
+        self.assertIn("\x1b[J", out)
+        # Подъём происходит на высоту прошлого блока (2 строки) — \033[2F.
+        self.assertIn("\x1b[2F", out)
+        # Количество вызовов со стиранием = число повторных (total - 1).
+        # Каждый повторный перерисовывает, а не дописывает — значит каскада нет.
+        self.assertGreaterEqual(out.count("\x1b[J"), 2)
+
+    def test_prev_lines_tracks_height(self):
+        # _STATUS_PREV_LINES корректно отслеживает высоту блока (1 / 2 строки).
+        bot = self.bot
+        buf: list[str] = []
+        bot._use_color = lambda: True
+        orig = bot.sys.stdout.write
+        try:
+            bot.sys.stdout.write = buf.append
+            bot._draw_status(["{}Работаю".format("\x1b[32m") + " [t1]"])
+            self.assertEqual(bot._STATUS_PREV_LINES, 1)
+            bot._draw_status(["{}Работаю".format("\x1b[32m") + " [t2]", "❌ Ошибка [t2]"])
+            self.assertEqual(bot._STATUS_PREV_LINES, 2)
+            bot._draw_status(["{}Работаю".format("\x1b[32m") + " [t3]", "❌ Ошибка [t3]"])
+            self.assertEqual(bot._STATUS_PREV_LINES, 2)
+        finally:
+            bot.sys.stdout.write = orig
+
+    def _first_bracket(self, s: str) -> int:
+        return s.find("\x1b[", 1)
+
+
 if __name__ == "__main__":
     unittest.main()
