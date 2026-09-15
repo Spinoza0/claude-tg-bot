@@ -220,25 +220,72 @@ async def _reply(message: Message, text: str):
     return await message.reply_text(f"🤖 {text}")
 
 
-async def _send_with_retry(message: Message, text: str, attempts: int = 3, delay: float = 2.0):
+def _retry_backoff_delay(n: int) -> float:
+    """Пауза перед (n)-м повтором: base * multiplier^(n-1) с потолком max.
+
+    n отсчитывается от 1 (первый повтор). Так после первой неудачи — base,
+    после второй — base*multiplier и т.д. до max. Возвращает секунды.
+    """
+    delay = config.RETRY_BASE_DELAY * (config.RETRY_MULTIPLIER ** (n - 1))
+    return min(delay, config.RETRY_MAX_DELAY)
+
+
+async def _run_with_retry(
+    action,
+    *,
+    limit: int | None = None,
+    base_delay: float | None = None,
+    max_delay: float | None = None,
+    multiplier: float | None = None,
+):
+    """Единый механизм повторов: вызывает action(), при неудаче ждёт паузу.
+
+    Пауза после n-й неудачи растёт как base*multiplier^(n-1) с потолком max
+    (по умолчанию — из config, см. _retry_backoff_delay). После limit попыток
+    (включая первую) отдаёт None. Не ловит KeyboardInterrupt/CancelledError —
+    прерывание должно работать всегда.
+
+    Параметры limit/base_delay/max_delay/multiplier переопределяют значения из
+    config: для коротких повторов отправки сообщений задаются секундами и
+    multiplier=1.0 (постоянная пауза), для долгих — минуты с ростом.
+    """
+    limit = limit if limit is not None else config.RETRY_LIMIT
+    for attempt in range(1, limit + 1):
+        try:
+            result = await action()
+            return result
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            raise
+        except Exception:
+            if attempt < limit:
+                if base_delay is not None:
+                    await asyncio.sleep(
+                        min(base_delay * (multiplier or 1.0) ** (attempt - 1), max_delay or base_delay)
+                    )
+                else:
+                    await asyncio.sleep(_retry_backoff_delay(attempt))
+    return None
+
+
+async def _send_with_retry(message: Message, text: str, attempts: int | None = None, delay: float | None = None):
     """Отправить ответ с повторными попытками при транзиентной ошибке Telegram.
 
     Telegram временами отвечает внутренней ошибкой дата-центра
     (напр. [500 INTERDC_X_CALL_ERROR] — меж-DC вызов в чатах вне основного DC
     при работе через MTProto-прокси). Тогда `reply_text` бросает исключение, и
-    результат теряется. Здесь делаем несколько попыток с паузой: первая же
-    успешная отправка возвращает сообщение. Если все попытки провалились —
-    возвращаем None (не бросаем), чтобы не уронить обработку дальше.
+    результат теряется. Здесь используем единый механизм повторов с короткими
+    паузами (секунды). Если все попытки провалились — возвращаем None (не
+    бросаем), чтобы не уронить обработку дальше.
     """
-    last_exc: Exception | None = None
-    for i in range(attempts):
-        try:
-            return await _reply(message, text)
-        except Exception as e:
-            last_exc = e
-            if i < attempts - 1:
-                await asyncio.sleep(delay)
-    return None
+    return await _run_with_retry(
+        lambda: _reply(message, text),
+                limit=attempts if attempts is not None else config.MESSAGE_RETRY_LIMIT,
+        base_delay=delay if delay is not None else config.MESSAGE_RETRY_DELAY,
+        # Отправка — транзиентная ошибка, пауза постоянная (множитель 1),
+        # а не растущая: иначе ответ «зависал» бы дольше нужного.
+        multiplier=1.0,
+        max_delay=config.MESSAGE_RETRY_DELAY,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1368,16 +1415,15 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
     # удались — пропускаем индикатор и продолжаем работу, чтобы не заблокировать
     # запуск claude (иначе бот «молчит» в чатах вне основного DC).
     busy = None
-    for _attempt in range(3):
-        try:
-            # Таймаут на попытку: чтоб каждая не висела бесконечно (Pyrogram сам
-            # ретраит SendMessage), но при транзиентной ошибке — повторяем.
-            busy = await asyncio.wait_for(_reply(message, "Думаю..."), timeout=5)
-            break
-        except Exception:
-            busy = None
-            if _attempt < 2:
-                await asyncio.sleep(2.0)
+    async def _send_busy():
+        return await asyncio.wait_for(_reply(message, "Думаю..."), timeout=5)
+    busy = await _run_with_retry(
+        _send_busy,
+                limit=config.MESSAGE_RETRY_LIMIT,
+        base_delay=config.MESSAGE_RETRY_DELAY,
+        multiplier=1.0,
+        max_delay=config.MESSAGE_RETRY_DELAY,
+    )
     busy_chat = busy.chat.id if busy else None
     busy_msg_id = busy.id if busy else None
 
@@ -1552,36 +1598,42 @@ async def main():
 
 
 async def _start_with_retry(app):
-    """Подключение к Telegram с умными повторами при сбое сети.
+    """Подключение к Telegram с повторными попытками при сбое сети.
 
     Вместо вылета с трейсбеком (TimeoutError после внутренних ретраев) печатаем
-    КОРОТКОЕ понятное сообщение и повторяем подключение с растущей паузой:
-    1, 2, ... мин, доходя до 15 мин, дальше держим 15 мин.
+    КОРОТКОЕ понятное сообщение и повторяем подключение с единой схемой паузы:
+    1, 2, ... мин (потолок RETRY_MAX_DELAY). После RETRY_LIMIT попыток —
+    сообщаем об ошибке и завершаемся (не крутим бесконечно).
 
     Ctrl+C прерывает паузу: KeyboardInterrupt/CancelledError — это
     BaseException, мы их НЕ ловим, поэтому приложение закрывается как обычно.
     """
-    delay = 60           # стартовая пауза, сек (1 мин)
-    max_delay = 15 * 60  # потолок — 15 мин, дальше держим 15
-    while True:
+    for attempt in range(1, config.RETRY_LIMIT + 1):
         try:
             await app.start()
             return  # подключились — выходим из цикла
         except KeyboardInterrupt:
             raise
         except (ConnectionError, TimeoutError, OSError) as e:
-            mins = delay // 60
-            # Одна короткая строка: без спама повторяющихся ошибок.
-            note = f"{_friendly(str(e))}. Повтор через {mins} мин..."
-            if _use_color():
-                line = f"\033[31m❌ {note}\033[0m"
+            if attempt < config.RETRY_LIMIT:
+                pause = _retry_backoff_delay(attempt)
+                mins = max(1, round(pause / 60))
+                # Одна короткая строка: без спама повторяющихся ошибок.
+                note = f"{_friendly(str(e))}. Повтор через {mins} мин ({attempt}/{config.RETRY_LIMIT})..."
+                if _use_color():
+                    line = f"\033[31m❌ {note}\033[0m"
+                else:
+                    line = f"❌ {note}"
+                sys.stdout.write("\r" + " " * 60 + "\r" + line + "\n")
+                sys.stdout.flush()
+                await asyncio.sleep(pause)
             else:
-                line = f"❌ {note}"
-            sys.stdout.write("\r" + " " * 60 + "\r" + line + "\n")
-            sys.stdout.flush()
-            await asyncio.sleep(delay)
-            # Умный рост: +1 мин за попытку до 15, потом держим 15.
-            delay = min(delay + 60, max_delay)
+                sys.stdout.write(
+                    "\n❌ Не удалось подключиться к Telegram после "
+                    f"{config.RETRY_LIMIT} попыток: {_friendly(str(e))}\n"
+                )
+                sys.stdout.flush()
+                raise
 
 
 async def _shutdown(app):

@@ -17,7 +17,7 @@ from typing import Iterable, Optional
 
 # Версия бота — показывается в /help и /status. Держим в config, т.к. это
 # единый источник и для пакетного запуска, и для запуска скриптом.
-BOT_VERSION: str = "0.2.4"
+BOT_VERSION: str = "0.2.5"
 
 
 def _find_config_env(candidates: Optional[Iterable[Path]] = None) -> Optional[Path]:
@@ -167,6 +167,23 @@ MAX_PROMPT_LENGTH: int = int(os.getenv("MAX_PROMPT_LENGTH", "8000"))
 
 # Таймаут одного вызова Claude (сек). 0 = без лимита.
 CLAUDE_TIMEOUT_SECONDS: int = int(os.getenv("CLAUDE_TIMEOUT_SECONDS", "600"))
+
+
+# ---------------------------------------------------------------------------
+# Единая схема повторов при транзиентных сбоях (подключение, отправка, Claude)
+# ---------------------------------------------------------------------------
+# Один механизм ретраев на все места: после N-й неудачи пауза растёт как
+# min(base * multiplier^(N-1), max). При успехе счётчик сбрасывается к base.
+# RETRY_LIMIT — сколько попыток суммарно (включая первую) до отказа.
+RETRY_LIMIT: int = int(os.getenv("RETRY_LIMIT", "5"))
+RETRY_BASE_DELAY: float = float(os.getenv("RETRY_BASE_DELAY", "60"))      # сек
+RETRY_MAX_DELAY: float = float(os.getenv("RETRY_MAX_DELAY", "300"))       # сек (5 мин)
+RETRY_MULTIPLIER: float = float(os.getenv("RETRY_MULTIPLIER", "2.0"))
+
+# Короткие повторы для отправки сообщений/индикаторов в Telegram — секунды,
+# чтобы ответ не «висел» долго (это транзиентные меж-DC ошибки, не потеря сети).
+MESSAGE_RETRY_LIMIT: int = int(os.getenv("MESSAGE_RETRY_LIMIT", "3"))
+MESSAGE_RETRY_DELAY: float = float(os.getenv("MESSAGE_RETRY_DELAY", "2.0"))
 
 
 # ---------------------------------------------------------------------------
