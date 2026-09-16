@@ -21,37 +21,12 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
-# --- 0. Выбираем подходящий Python (>=3.10): PYTHON из env, иначе автоподбор.
-# ---------------------------------------------------------------------------
-# Боту и kurigram нужен Python 3.10+. Системный python3 бывает старее (напр.
-# 3.9), поэтому перебираем известные бинарники и берём первый с версией >=3.10.
-pick_python() {
-    local candidates py ver
-    # Если PYTHON задан — только он (но проверим версию ниже).
-    if [ -n "${PYTHON:-}" ]; then
-        candidates="$PYTHON"
-    else
-        candidates="python3.13 python3.12 python3.11 python3.10 python3"
-    fi
-    for py in $candidates; do
-        command -v "$py" >/dev/null 2>&1 || continue
-        ver="$("$py" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)" || continue
-        if [ "$(printf '%s\n%s\n' "3.10" "$ver" | sort -V | head -n1)" = "3.10" ] || [ "$ver" = "3.10" ]; then
-            # ver >= 3.10
-            printf '%s' "$py"
-            return 0
-        fi
-    done
-    return 1
-}
-
-PYTHON="$(pick_python || true)"
-if [ -z "$PYTHON" ]; then
-    echo "!! Не найден Python 3.10+. Требуется >=3.10 (нужен для kurigram)."
-    echo "   Установи Python 3.10+ или задай путь: PYTHON=/path/to/python3.13 $0"
-    exit 1
-fi
-echo "==> Python: $PYTHON ($("$PYTHON" -c 'import sys; print(".".join(map(str,sys.version_info[:3])))'))"
+# --- 0. Подготовка окружения (Python + venv + зависимости) ------------------
+# Вынесено в общий модуль lib/env.sh, чтобы использовать его и из setup.sh.
+# setup_env() выбирает Python >=3.10, создаёт/пересоздаёт venv, ставит
+# зависимости. Запускаем бота через $VENV/bin/python (активацию venv не делаем).
+source "$DIR/lib/env.sh"
+setup_env
 
 # config.env ищется в двух местах (по приоритету, как в config.py):
 #   1. ~/.claude-tg-bot/config.env  — каталог, где лежит папка sandbox;
@@ -66,40 +41,6 @@ fi
 # Путь к конфигу показываем первым — он определяет и корень проектов, и песочницу.
 # Корень проектов и каталог песочницы печатает сам бот в main (сразу после config.env).
 echo "==> config.env: $CONFIG_ENV"
-
-# --- 1. Создаём venv выбранным Python, либо пересоздаём, если он старой версии.
-# ---------------------------------------------------------------------------
-VENV="$DIR/.venv"
-
-venv_ok() {
-    # Существующий venv подходит, если его python >=3.10.
-    local v
-    v="$("$VENV/bin/python" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)" || return 1
-    [ "$(printf '%s\n%s\n' "3.10" "$v" | sort -V | head -n1)" = "3.10" ]
-}
-
-if [ -d "$VENV" ] && ! venv_ok; then
-    echo "==> venv собран старым Python ($("$VENV/bin/python" --version 2>&1)), удаляю и пересоздаю через $PYTHON"
-    rm -rf "$VENV"
-fi
-
-if [ ! -d "$VENV" ]; then
-    echo "==> venv не найден, создаю: $VENV (через $PYTHON)"
-    "$PYTHON" -m venv "$VENV"
-fi
-
-# --- 2. Активируем venv и проверяем наличие зависимостей --------------------
-# shellcheck disable=SC1091
-source "$VENV/bin/activate"
-
-# Внимание: модуль называется python_socks (пакет python-socks), НЕ socks (PySocks).
-# kurigram зависит от python-socks, а PySocks может не стоять — поэтому проверяем
-# именно python_socks, иначе проверка падает каждый раз и ставит зависимости вновь.
-if ! python -c "import pyrogram, python_socks, dotenv" >/dev/null 2>&1; then
-    echo "==> Устанавливаю зависимости из requirements.txt ..."
-    python -m pip install --quiet --upgrade pip
-    python -m pip install --quiet -r requirements.txt
-fi
 
 # --- 3. Проверка config.env — файл обязателен (в одном из двух мест) -------
 if [ ! -f "$CONFIG_ENV" ]; then
@@ -148,8 +89,9 @@ if [ -f "$CONFIG_ENV" ]; then
 fi
 echo "==> Запускаю бота..."
 # "$@" внизу — проброс аргументов вызова (напр. --log=info) в python -m.
+# Запускаем через $VENV/bin/python (venv не активировали в setup_env).
 if { [ "$KEEP_AWAKE" = "true" ] || [ "$KEEP_AWAKE" = "1" ] || [ "$KEEP_AWAKE" = "yes" ]; } && command -v caffeinate >/dev/null 2>&1; then
-    exec caffeinate -dimsu python -m claude_tg_bot "$@"
+    exec caffeinate -dimsu "$VENV/bin/python" -m claude_tg_bot "$@"
 else
-    exec python -m claude_tg_bot "$@"
+    exec "$VENV/bin/python" -m claude_tg_bot "$@"
 fi
