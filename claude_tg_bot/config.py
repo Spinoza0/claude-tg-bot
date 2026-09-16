@@ -259,6 +259,11 @@ def validate() -> None:
         problems.append("API_HASH не задан (получите на https://my.telegram.org/apps)")
     if not PHONE:
         problems.append("PHONE не задан (номер аккаунта Telegram)")
+    if not os.getenv("PROJECTS_ROOT"):
+        problems.append(
+            "PROJECTS_ROOT не задан — корень проектов, где боту разрешено работать. "
+            "Укажи его в config.env (обязательный параметр)."
+        )
     if not ALLOWED_USERS:
         warnings.append("ALLOWED_USERS пуст — бот будет игнорировать всех (закрыт)")
     if not ALLOWED_CHAT_IDS:

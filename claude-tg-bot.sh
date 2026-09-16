@@ -56,7 +56,7 @@ else
     # Плейсхолдеры, которые надо обязательно заменить.
     # Проверяем ЦЕЛИКОМ строки вида КЛЮЧ=ПЛЕЙСХОЛДЕР (по якорям ^ и $),
     # чтобы не ловить подстроки — например, число 123456789 внутри реального API_HASH.
-    UNSET=$(grep -E -e "^API_ID=ЗАМЕНИ_МЕНЯ$" -e "^API_HASH=ЗАМЕНИ_МЕНЯ$" -e "^API_ID=0$" -e "^PHONE=\+7XXXXXXXXXX$" -e "^ALLOWED_USERS=123456789$" -e "^ALLOWED_USERS=$" "$CONFIG_ENV" || true)
+    UNSET=$(grep -E -e "^API_ID=ЗАМЕНИ_МЕНЯ$" -e "^API_HASH=ЗАМЕНИ_МЕНЯ$" -e "^API_ID=0$" -e "^PHONE=\+7XXXXXXXXXX$" -e "^ALLOWED_USERS=123456789$" -e "^ALLOWED_USERS=$" -e "^PROJECTS_ROOT=$" "$CONFIG_ENV" || true)
     if [ -n "$UNSET" ]; then
         echo "!! config.env содержит незаполненные плейсхолдеры:"
         echo "   $UNSET"
@@ -65,6 +65,7 @@ else
         echo "     - API_ID и API_HASH (с https://my.telegram.org/apps)"
         echo "     - PHONE (твой номер)"
         echo "     - ALLOWED_USERS (твой telegram user_id)"
+        echo "     - PROJECTS_ROOT (корень проектов, где боту разрешено работать)"
         echo "     - ALLOWED_CHAT_IDS (id чата, где бот отвечает — см. README)"
         exit 1
     fi

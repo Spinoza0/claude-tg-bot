@@ -2,7 +2,20 @@
 
 import unittest
 
-from claude_tg_bot.setup import _sanitize, _strip_inline_comment
+from claude_tg_bot.setup import GROUPS, _sanitize, _strip_inline_comment
+
+
+class TestGroupRequired(unittest.TestCase):
+    """Обязательные параметры помечены required=True."""
+
+    def test_projects_root_required(self):
+        required_keys = {k for g in GROUPS for k, req, _d, _h in g[1] if req}
+        self.assertIn("PROJECTS_ROOT", required_keys)
+
+    def test_required_keys_present(self):
+        # Все обязательные из GROUPS присутствуют
+        for key in ("API_ID", "API_HASH", "PHONE", "ALLOWED_USERS", "PROJECTS_ROOT"):
+            self.assertIn(key, {k for g in GROUPS for k, _r, _d, _h in g[1]})
 
 
 class TestStripInlineComment(unittest.TestCase):
