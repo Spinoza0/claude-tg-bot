@@ -46,8 +46,13 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt        # MTProto-клиент + python-socks
-cp config.env.example config.env       # затем заполнить config.env
 ```
+
+Заполнить `config.env` можно двумя способами:
+- **интерактивно** — `bash setup.sh` (спросит настройки по группам, создаст
+  или отредактирует `~/.claude-tg-bot/config.env`; при редактировании делает
+  копию `config.env.bak` и показывает текущие значения);
+- **вручную** — скопировать `config.env.example` в `config.env` и заполнить.
 
 ## Настройка `config.env`
 
