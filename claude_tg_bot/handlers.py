@@ -29,7 +29,7 @@ from .media import (
     _sniff_image_ext,
     _textual_media_prompt,
 )
-from .reply import _reply, _send_with_retry
+from .reply import _reply, _send_split, _send_with_retry
 from .sandbox import _is_sandbox_message, _strip_sandbox_prefix
 from .status import _is_model_unavailable, _is_run_error, _report_run_error
 
@@ -320,14 +320,11 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
                     text = "🧹 Контекст очищен — начата новая сессия."
                 else:
                     text = "(пустой ответ)"
-            # Телеграм лимит 4096 — режем с указанием
-            if len(text) > 4000:
-                text = text[:4000] + "\n\n… (ответ обрезан, продолжай следующим сообщением)"
-            # Сначала присылаем ответ, потом убираем «работаю». Если удаление
+            # Telegram режет сообщение на 4096 символов — ответ длиннее лимита
+            # шлём несколькими сообщениями (по границам абзацев), чтобы ничего
+            # не обрезать. Сначала ответ, потом убираем «работаю»: если удаление
             # индикатора зависнет (сбой MTProto-прокси), ответ всё равно дойдёт.
-            # Ответ шлём с ретраями: при меж-DC ошибке Telegram (INTERDC_X_CALL_ERROR)
-            # он не должен теряться — делаем несколько попыток.
-            await _send_with_retry(message, text)
+            await _send_split(message, text)
             await _cleanup_busy()
         except FileNotFoundError as e:
             await _cleanup_busy()
