@@ -41,7 +41,7 @@ GROUPS = [
     ("Песочница и проекты", [
         ("SANDBOX_ROOT", False, "", "Каталог песочницы (@helpbot). Пусто — ~/.claude-tg-bot/sandbox"),
         ("SANDBOX_COMMAND", False, "@helpbot", "Строка-триггер песочницы"),
-        ("PROJECTS_ROOT", False, "", "Корень проектов, где боту разрешено работать"),
+        ("PROJECTS_ROOT", True, "", "Корень проектов, где боту разрешено работать"),
     ]),
 ]
 
@@ -103,18 +103,19 @@ def _sanitize(value: str) -> str:
     return value
 
 
-def _ask(label: str, current: str, default: str, required: bool) -> str:
-    """Задать вопрос, вернуть значение.
+def _ask(key: str, hint: str, current: str, default: str, required: bool) -> str:
+    """Задать вопрос по параметру, вернуть значение.
 
-    current — текущее (редактирование), default — дефолт (создание). Enter —
-    оставить current (если есть) или default. Возвращает итоговое значение.
+    key — имя переменной (напр. API_ID), показывается в вопросе; hint —
+    пояснение. current — текущее (редактирование), default — дефолт (создание).
+    Enter — оставить current (если есть) или default. Возвращает значение.
     """
     shown = current if current else default
     tag = "(обязательно)" if required else "(необязательно)"
     if shown:
-        prompt = f"{label} {tag} [текущее: {shown!r}]. Enter = оставить: "
+        prompt = f"{key}: {hint} {tag} [текущее: {shown!r}]. Enter = оставить: "
     else:
-        prompt = f"{label} {tag}. Enter = пропустить: "
+        prompt = f"{key}: {hint} {tag}. Enter = пропустить: "
     while True:
         try:
             inp = input(prompt).strip()
@@ -172,9 +173,18 @@ def main() -> None:
         print(f"\n=== {title} ===")
         for key, required, default, hint in settings:
             current = existing.get(key, "")
-            values[key] = _ask(hint, current, default, required)
+            values[key] = _ask(key, hint, current, default, required)
 
     values.update(DEFAULTS)
+
+    # Проверка обязательных параметров: если какой-то пуст — не сохраняем,
+    # а просим заполнить (иначе бот не запустится).
+    missing = [k for g in GROUPS for k, req, _d, _h in g[1]
+               if req and not values.get(k)]
+    if missing:
+        print("\n❌ Не заполнены обязательные параметры: " + ", ".join(missing))
+        print("   Ничего не сохранено. Перезапусти setup.sh и заполни их.")
+        raise SystemExit(1)
 
     print(f"\n--- Итог: {_CFG_PATH}")
     _write(_CFG_PATH, values)

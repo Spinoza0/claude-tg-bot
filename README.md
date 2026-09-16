@@ -76,6 +76,7 @@ bash claude-tg-bot.sh  # запуск бота (сам создаст venv и п
 - `PHONE` — номер Telegram-аккаунта
 - `ALLOWED_USERS` — Telegram user_id (см. ниже)
 - `ALLOWED_CHAT_IDS` — id чата, в котором бот отвечает (см. ниже)
+- `PROJECTS_ROOT` — корень проектов, где боту разрешено работать (см. ниже)
 
 Необязательные:
 - `MT_PROXY` — строка `tg://proxy?...`. Если **не задана** — бот подключается
