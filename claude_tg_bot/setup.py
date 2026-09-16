@@ -33,20 +33,20 @@ GROUPS = [
         ("ALLOWED_CHAT_IDS", False, "", "chat_id, где бот отвечает. Пусто — только «Избранное»"),
     ]),
     ("Запуск Claude", [
-        ("CLAUDE_COMMAND", False, "claude", "Команда запуска Claude (или обёртки), напр. claude-cline"),
+        ("CLAUDE_COMMAND", True, "claude", "Команда запуска Claude (или обёртки), напр. claude-cline"),
         ("COMMAND_ARGS", False, "", "Доп. аргументы к CLAUDE_COMMAND (напр. --provider openai-compatible)"),
         ("COMMAND_ARGS_ALTERNATIVE", False, "", "Альтернативные args для смены модели при её недоступности"),
         ("CLAUDE_SYSTEM_PROMPT", False, "", "Системный промпт (--append-system-prompt). Пусто — стандартный"),
     ]),
     ("Песочница и проекты", [
         ("SANDBOX_ROOT", False, "", "Каталог песочницы (@helpbot). Пусто — ~/.claude-tg-bot/sandbox"),
-        ("SANDBOX_COMMAND", False, "@helpbot", "Строка-триггер песочницы"),
         ("PROJECTS_ROOT", True, "", "Корень проектов, где боту разрешено работать"),
     ]),
 ]
 
 # Настройки, которые не спрашиваются (у них осмысленные дефолты) — пишем как есть.
 DEFAULTS = {
+    "SANDBOX_COMMAND": "@helpbot",
     "CLAUDE_PERMISSION_MODE": "bypassPermissions",
     "CLAUDE_TIMEOUT_SECONDS": "600",
     "MAX_PROMPT_LENGTH": "8000",
