@@ -25,7 +25,7 @@
 `git add -A` стейджит весь рабочий каталог и может случайно добавить
 `config.env`, `.session`, логи. Вместо этого добавляй **конкретные файлы**:
 ```bash
-git add claude_tg_bot/ tests/ README.md AGENTS.md claude-tg-bot.sh config.env.example requirements.txt
+git add claude_tg_bot/ tests/ lib/ README.md AGENTS.md claude-tg-bot.sh setup.sh config.env.example requirements.txt
 ```
 
 ### 2. Перед каждым коммитом — проверь, что стейджедено
@@ -78,8 +78,10 @@ git ls-files | xargs grep -lE \
 
 - Исходный код: весь пакет `claude_tg_bot/` (модули: `config`, `client`, `handlers`,
   `commands`, `media`, `sandbox`, `status`, `reply`, `access`, `process`, `retry`,
-  `runner`, `sessions`, `version`, `__main__`)
-- Запуск: `claude-tg-bot.sh`
+  `runner`, `sessions`, `setup`, `log`, `version`, `__main__`)
+- Скрипты: `claude-tg-bot.sh` (запуск), `setup.sh` (настройка) — оба используют
+  общий bash-модуль `lib/env.sh` (выбор Python + venv + зависимости).
+- Запуск: `claude-tg-bot.sh`; настройка: `setup.sh`
 - Конфиг-пример: `config.env.example` (только фейки!)
 - Документация: `README.md`, `AGENTS.md`
 - `requirements.txt`, `.gitignore`

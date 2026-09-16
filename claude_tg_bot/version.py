@@ -4,4 +4,4 @@
 конфигурацию.
 """
 
-BOT_VERSION: str = "0.5.0"
+BOT_VERSION: str = "0.5.1"
