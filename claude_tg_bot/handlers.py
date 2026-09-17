@@ -287,11 +287,28 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
             max_attempts = max(1, config.RETRY_LIMIT)
 
             result = None
+            # Флаги для уведомления в Telegram о смене модели: шлём сообщение
+            # ровно один раз при первом переключении на запасной набор аргументов
+            # и один раз при успешном ответе запасной модели — чтобы не спамить
+            # пользователя при чередовании базовых/альтернативных попыток.
+            switch_notified = False
+            was_on_alt = False
             for attempt in range(1, max_attempts + 1):
                 # Чередуем: попытка 1 — базовые, 2 — alt, 3 — базовые, ...
                 chosen = variants[(attempt - 1) % len(variants)]
+                is_alt = chosen is not None
                 logger.info("Попытка %s/%s (args=%s)", attempt, max_attempts,
                             "базовые" if chosen is None else "альтернативные")
+                if is_alt and not switch_notified:
+                    # Основная модель не ответила на прошлой попытке — сообщаем
+                    # пользователю, что переключаемся на запасной набор аргументов.
+                    switch_notified = True
+                    await _send_with_retry(
+                        message,
+                        "⚠️ Модель не отвечает — переключаюсь на запасной набор аргументов.",
+                    )
+                if is_alt:
+                    was_on_alt = True
                 result = await run_claude(
                     prompt,
                     cwd=project,
@@ -302,7 +319,15 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
                 )
                 # Модель ответила или исчерпали лимит — выходим; иначе пауза и
                 # следующая попытка (с др. набором, если есть альтернатива).
-                if not _is_model_unavailable(result) or attempt == max_attempts:
+                if not _is_model_unavailable(result):
+                    if was_on_alt and switch_notified:
+                        # Запасная модель, на которую переключились, ответила.
+                        await _send_with_retry(
+                            message,
+                            "✅ Запасная модель ответила.",
+                        )
+                    break
+                if attempt == max_attempts:
                     break
                 logger.warning("Модель недоступна (попытка %s), меняю набор аргументов", attempt)
                 await asyncio.sleep(_retry_backoff_delay(attempt))
