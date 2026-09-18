@@ -40,16 +40,18 @@ fi
 
 # Путь к конфигу показываем первым — он определяет и корень проектов, и песочницу.
 # Корень проектов и каталог песочницы печатает сам бот в main (сразу после config.env).
-echo "==> config.env: $CONFIG_ENV"
+# Указываем язык из этого конфига для общих сообщений (см. lib/lib_msg).
+LIB_CONFIG_ENV="$CONFIG_ENV"
+echo "$(lib_msg run.sh.config_env)" | sed "s|{path}|$CONFIG_ENV|"
 
 # --- 3. Проверка config.env — файл обязателен (в одном из двух мест) -------
 if [ ! -f "$CONFIG_ENV" ]; then
-    echo "!! config.env не найден ни в одном из двух мест:"
+    echo "$(lib_msg run.sh.cfg_missing)"
     echo "   - ${HOME}/.claude-tg-bot/config.env"
     echo "   - $DIR/config.env"
     echo ""
-    echo "   Скопируй пример и заполни секреты:"
-    echo "   cp config.env.example config.env"
+    echo "$(lib_msg run.sh.cfg_missing_copy)"
+    echo "$(lib_msg run.sh.cfg_copy_cmd)"
     exit 1
 else
 
@@ -58,22 +60,22 @@ else
     # чтобы не ловить подстроки — например, число 123456789 внутри реального API_HASH.
     UNSET=$(grep -E -e "^API_ID=ЗАМЕНИ_МЕНЯ$" -e "^API_HASH=ЗАМЕНИ_МЕНЯ$" -e "^API_ID=0$" -e "^PHONE=\+7XXXXXXXXXX$" -e "^ALLOWED_USERS=123456789$" -e "^ALLOWED_USERS=$" -e "^PROJECTS_ROOT=$" "$CONFIG_ENV" || true)
     if [ -n "$UNSET" ]; then
-        echo "!! config.env содержит незаполненные плейсхолдеры:"
+        echo "$(lib_msg run.sh.cfg_placeholders)"
         echo "   $UNSET"
         echo ""
-        echo "   Открой $CONFIG_ENV и вставь реальные:"
-        echo "     - API_ID и API_HASH (с https://my.telegram.org/apps)"
-        echo "     - PHONE (твой номер)"
-        echo "     - ALLOWED_USERS (твой telegram user_id)"
-        echo "     - PROJECTS_ROOT (корень проектов, где боту разрешено работать)"
-        echo "     - ALLOWED_CHAT_IDS (id чата, где бот отвечает — см. README)"
+        echo "$(lib_msg run.sh.cfg_placeholders_fix)" | sed "s|{path}|$CONFIG_ENV|"
+        echo "$(lib_msg run.sh.fix_api)"
+        echo "$(lib_msg run.sh.fix_phone)"
+        echo "$(lib_msg run.sh.fix_users)"
+        echo "$(lib_msg run.sh.fix_projects_root)"
+        echo "$(lib_msg run.sh.fix_chat_ids)"
         exit 1
     fi
 
     # Предупреждение: если ALLOWED_CHAT_IDS пуст, бот ответит в «Избранном»
     if grep -qE '^ALLOWED_CHAT_IDS=""$|^ALLOWED_CHAT_IDS=$' "$CONFIG_ENV"; then
-        echo "ℹ️  ALLOWED_CHAT_IDS пуст — бот будет отвечать только в «Избранном»."
-        echo "   (в группах отвечать не будет). Другой чат — впиши id в config.env."
+        echo "$(lib_msg run.sh.chat_ids_empty)"
+        echo "$(lib_msg run.sh.chat_ids_empty_hint)"
     fi
 fi
 
@@ -88,7 +90,7 @@ KEEP_AWAKE="false"
 if [ -f "$CONFIG_ENV" ]; then
     KEEP_AWAKE="$(grep -E '^KEEP_AWAKE=' "$CONFIG_ENV" | tail -1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' || true)"
 fi
-echo "==> Запускаю бота..."
+echo "$(lib_msg run.sh.launching)"
 # "$@" внизу — проброс аргументов вызова (напр. --log=info) в python -m.
 # Запускаем через $VENV/bin/python (venv не активировали в setup_env).
 if { [ "$KEEP_AWAKE" = "true" ] || [ "$KEEP_AWAKE" = "1" ] || [ "$KEEP_AWAKE" = "yes" ]; } && command -v caffeinate >/dev/null 2>&1; then
