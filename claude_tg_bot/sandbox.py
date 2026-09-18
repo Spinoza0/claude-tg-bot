@@ -1,24 +1,24 @@
-"""Определение песочницы: триггер SANDBOX_COMMAND и распознавание сообщения.
+"""Sandbox detection: the SANDBOX_COMMAND trigger and message recognition.
 
-Сама обработка песочницы (on_sandbox) живёт в handlers.py — она запускает
-остальные хендлеры. Здесь только чистые предикаты над строкой сообщения.
+The sandbox handling itself (on_sandbox) lives in handlers.py — it launches the
+other handlers. Here we only keep pure predicates over the message string.
 """
 
 from . import config
 
-# Строка-триггер запуска песочницы. Берётся из config.SANDBOX_COMMAND (по умолчанию
-# "@helpbot" — упоминание бота). Сообщение обязано начинаться с неё, дальше
-# пробел + команда/текст (с картинкой или без).
+# Trigger string for the sandbox. Taken from config.SANDBOX_COMMAND (default
+# "@helpbot" — a mention of the bot). A message must start with it, followed by a
+# space and a command/text (with or without an image).
 SANDBOX_PREFIX = config.SANDBOX_COMMAND
 
 
 def _is_sandbox_message(text: str) -> bool:
-    """Начинается ли сообщение с триггера SANDBOX_COMMAND (с границей слова).
+    """Whether a message starts with the SANDBOX_COMMAND trigger (word boundary).
 
-    Требуем, чтобы после триггера шёл пробел или конец строки — чтобы не
-    путать с похожими строками (@helpbotxyz и т.п.). Пустой триггер считаем
-    «не для песочницы» (на практике SANDBOX_COMMAND всегда непустой — дефолт
-    @helpbot, см. config).
+    We require a space or end-of-line after the trigger, so that similar strings
+    (@helpbotxyz etc.) don't match. An empty trigger is treated as "not for the
+    sandbox" (in practice SANDBOX_COMMAND is never empty — default @helpbot,
+    see config).
     """
     if not SANDBOX_PREFIX:
         return False
@@ -30,12 +30,11 @@ def _is_sandbox_message(text: str) -> bool:
 
 
 def _strip_sandbox_prefix(text: str) -> str:
-    """Срезать с начала сообщения '@helpbot' и все пробелы после него.
+    """Strip the leading '@helpbot' and any whitespace after it.
 
-    Возвращает «хвост» — команду/текст, который передаём в песочницу. Если после
-    среза получилась пустая строка (и нет картинки) — сообщение игнорируется.
+    Returns the "tail" — the command/text handed to the sandbox. If the result is
+    an empty string (and there's no image) the message is ignored.
     """
     t = text.lstrip()
     rest = t[len(SANDBOX_PREFIX):]
-    # Срезаем все пробелы (обычные, табы, переводы строк) сразу после слова
     return rest.lstrip(" \t\r\n")

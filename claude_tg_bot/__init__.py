@@ -1,8 +1,4 @@
-"""claude_tg_bot — Telegram-бот для управления Claude.
-
-Работает как userbot на MTProto-клиенте (MTProto-протокол) через
-MTProto-прокси, поэтому не зависит от доступа к api.telegram.org (Bot API).
-"""
+"""claude_tg_bot — a Telegram userbot that drives Claude via the CLI."""
 
 from .version import BOT_VERSION as __version__
 

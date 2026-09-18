@@ -1,17 +1,17 @@
-"""Работа с вложениями: определение типа, размер, удаление, текстовые описания.
+"""Attachment handling: type detection, size, deletion, textual descriptions.
 
-Только чистые функции над файлами и объектами вложения. Обработчики вложений
-(on_photo/on_video и т.п.) живут в handlers.py, т.к. запускают Claude.
+Only pure functions over files and attachment objects. The attachment handlers
+(on_photo/on_video etc.) live in handlers.py because they launch Claude.
 """
 
 import shutil
 import subprocess
 from pathlib import Path
 
-from . import config
+from . import config, i18n
 
 
-# Расширение по mime_type (для объекта без file_name — напр. Voice).
+# Extension by mime_type (for objects without file_name — e.g. Voice).
 _MIME_EXT = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -31,10 +31,10 @@ _MIME_EXT = {
 
 
 def _media_ext(media) -> str:
-    """Расширение для скачиваемого вложения (Claude определяет тип по нему).
+    """Extension for a downloaded attachment (Claude infers its type from it).
 
-    Приоритет: расширение из file_name (если есть) → иначе из mime_type →
-    иначе дефолт ".bin". Voice не имеет file_name, поэтому для него mime_type.
+    Priority: extension from file_name (if any) → else from mime_type →
+    else the ".bin" default. Voice has no file_name, so its mime_type is used.
     """
     fname = getattr(media, "file_name", None)
     if fname and "." in fname:
@@ -50,11 +50,11 @@ def _media_ext(media) -> str:
 
 
 def _sniff_image_ext(path: Path) -> str:
-    """Расширение изображения по содержимому (магические байты), fallback .jpg.
+    """Image extension by content (magic bytes), fallback .jpg.
 
-    У Pyrogram объект photo (Photo) НЕ несёт file_name/mime_type, поэтому
-    реальный формат картинки (PNG/WebP/GIF/JPEG) определяем по первым байтам
-    скачанного файла. Если не распознали — считаем .jpg (как раньше).
+    Pyrogram's photo (Photo) object does NOT carry file_name/mime_type, so we
+    detect the real image format (PNG/WebP/GIF/JPEG) from the first bytes of the
+    downloaded file. If we can't detect it — assume .jpg (as before).
     """
     try:
         with path.open("rb") as f:
@@ -73,21 +73,21 @@ def _sniff_image_ext(path: Path) -> str:
 
 
 def _delete_path(path: Path, mode: str = "") -> None:
-    """Удалить файл/каталог по DELETE_MODE: в корзину (trash) или навсегда.
+    """Delete a file/folder per DELETE_MODE: to trash or permanently.
 
-    mode: 'trash' (корзина macOS, restore-able) | 'permanent' (навсегда).
-    Если mode не Trash → навсегда. Для trash предпочитаем send2trash, при его
-    отсутствии — через osascript (Finder). Для каталогов — rmtree/unlink.
+    mode: 'trash' (macOS Trash, restorable) | 'permanent' (gone for good).
+    If mode is not trash → permanent. For trash we prefer send2trash, falling
+    back to osascript (Finder) when it's missing. For folders — rmtree/unlink.
     """
     mode = (mode or config.DELETE_MODE or "trash").lower()
     if mode == "trash":
         try:
-            from send2trash import send2trash  # локальный импорт (опционально)
+            from send2trash import send2trash  # local import (optional dep)
             send2trash(str(path))
             return
         except Exception:
             pass
-        # Фолбэк без send2trash: osascript Finder на macOS.
+        # Fallback without send2trash: osascript Finder on macOS.
         try:
             subprocess.run(
                 ["osascript", "-e", f'tell application "Finder" to delete POSIX file "{path}"'],
@@ -96,7 +96,7 @@ def _delete_path(path: Path, mode: str = "") -> None:
             return
         except Exception:
             pass
-    # permanent (или не удалось в корзину): удаляем насмерть.
+    # permanent (or failed to trash): delete for real.
     if path.is_dir():
         shutil.rmtree(path, ignore_errors=True)
     else:
@@ -107,7 +107,6 @@ def _delete_path(path: Path, mode: str = "") -> None:
 
 
 def _dir_size(path: Path) -> int:
-    """Суммарный размер (байты) всех файлов внутри каталога path (рекурсивно)."""
     total = 0
     for p in path.rglob("*"):
         if p.is_file():
@@ -119,16 +118,15 @@ def _dir_size(path: Path) -> int:
 
 
 def _fmt_bytes(n: int) -> str:
-    """Красиво отформатировать байты: 512 Б / 4.2 КБ / 1.3 МБ / 2.1 ГБ."""
-    for unit, div in (("ГБ", 1024**3), ("МБ", 1024**2), ("КБ", 1024)):
+    """Nicely format bytes: 512 B / 4.2 KB / 1.3 MB / 2.1 GB."""
+    for unit_key, div in (("uni.GB", 1024**3), ("uni.MB", 1024**2), ("uni.KB", 1024)):
         if n >= div:
             val = n / div
-            return f"{val:.1f} {unit}"
-    return f"{n} Б"
+            return f"{val:.1f} {i18n.t(unit_key)}"
+    return f"{n} {i18n.t('uni.B')}"
 
 
 def _has_any_media(message) -> bool:
-    """Есть ли в сообщении вложение любого типа (не только распознанные)."""
     g = getattr
     return bool(
         g(message, "photo", None) or g(message, "video", None)
@@ -145,48 +143,48 @@ def _has_any_media(message) -> bool:
 
 
 def _media_type_name(message) -> str:
-    """Человеческое имя типа вложения для сообщения «не могу обработать».
+    """A human name for the attachment type, for the "can't process" message.
 
-    Для распознанных фото/видео/звука/файла возвращается точное имя; для
-    прочих (стикер, гео, опрос и т.п.) — по наличию. Если ничего нет — None.
+    For recognized photo/video/audio/file the exact name is returned; for others
+    (sticker, geo, poll, etc.) by presence. If none — None.
     """
     g = getattr
     if g(message, "photo", None):
-        return "фото"
+        return i18n.t("media.type_photo")
     if g(message, "video", None):
-        return "видео"
+        return i18n.t("media.type_video")
     if g(message, "video_note", None):
-        return "видеосообщение (кружок)"
+        return i18n.t("media.type_video_note")
     if g(message, "audio", None):
-        return "аудио"
+        return i18n.t("media.type_audio")
     if g(message, "voice", None):
-        return "голосовое"
+        return i18n.t("media.type_voice")
     if g(message, "document", None):
-        return "файл"
+        return i18n.t("media.type_file")
     if g(message, "animation", None):
-        return "анимация (GIF)"
+        return i18n.t("media.type_animation")
     if g(message, "sticker", None):
-        return "стикер"
+        return i18n.t("media.type_sticker")
     if g(message, "contact", None):
-        return "контакт"
+        return i18n.t("media.type_contact")
     if g(message, "location", None) or g(message, "venue", None):
-        return "геопозиция"
+        return i18n.t("media.type_location")
     if g(message, "poll", None):
-        return "опрос"
+        return i18n.t("media.type_poll")
     if g(message, "dice", None) or g(message, "game", None):
-        return "игра/анимация"
+        return i18n.t("media.type_game")
     if g(message, "web_app_data", None):
-        return "web-app данные"
+        return i18n.t("media.type_webapp")
     if g(message, "paid_media", None):
-        return "платный медиафайл"
-    return "неизвестное вложение"
+        return i18n.t("media.type_paid")
+    return i18n.t("media.type_unknown")
 
 
 def _textual_media_prompt(message) -> "str | None":
-    """Сформировать текст-описание для медиа без файла (опрос/гео/контакт).
+    """Build a textual description for file-less media (poll/geo/contact).
 
-    Возвращает готовый промпт или None, если тип не textual-медиа. Нужно,
-    чтобы claude понял, что прислал пользователь, и ответил по сути.
+    Returns a ready prompt or None if the type is not textual media. Needed so
+    claude understands what the user sent and answers to the point.
     """
     g = getattr
     poll = g(message, "poll", None)
@@ -194,9 +192,9 @@ def _textual_media_prompt(message) -> "str | None":
         q = g(poll, "question", None)
         question = getattr(q, "text", None) or str(q) if q else ""
         opts = [getattr(o, "text", None) or str(o) for o in (g(poll, "options", None) or [])]
-        lines = [f"Пользователь запустил опрос: {question}".strip() or "Пользователь запустил опрос."]
+        lines = [f"User started a poll: {question}".strip() or "User started a poll."]
         if opts:
-            lines.append("Варианты:")
+            lines.append("Options:")
             lines += [f"  - {o}" for o in opts]
         return "\n".join(lines)
 
@@ -204,7 +202,7 @@ def _textual_media_prompt(message) -> "str | None":
     if contact:
         name = " ".join(x for x in (getattr(contact, "first_name", ""), getattr(contact, "last_name", "")) if x)
         phone = getattr(contact, "phone_number", "") or ""
-        return f"Пользователь поделился контактом: {name} ({phone})".strip()
+        return f"User shared a contact: {name} ({phone})".strip()
 
     location = g(message, "location", None) or g(message, "venue", None)
     if location:
@@ -212,7 +210,7 @@ def _textual_media_prompt(message) -> "str | None":
         lon = getattr(location, "longitude", "")
         title = getattr(location, "title", "") or ""
         addr = getattr(location, "address", "") or ""
-        base = f"Геопозиция: {lat}, {lon}"
+        base = f"Geolocation: {lat}, {lon}"
         if title:
             base = f"{base} — {title}"
         if addr:

@@ -1,9 +1,9 @@
-"""Управление проектами.
+"""Project management.
 
-Бот хранит для каждого telegram user_id состояние: активный рабочий каталог
-(project_root) и отдельно — каталог песочницы (sandbox_project_root). Состояние
-сериализуется в state.json, чтобы переживать перезапуск бота. Сама сессия
-Claude живёт на диске (в ~/.claude/projects) и здесь не хранится.
+For each telegram user_id the bot stores a state: the active working directory
+(project_root) and, separately, the sandbox directory (sandbox_project_root).
+The state is serialized to state.json so it survives a bot restart. The Claude
+session itself lives on disk (in ~/.claude/projects) and is not stored here.
 """
 
 from __future__ import annotations
@@ -21,9 +21,9 @@ from . import config
 @dataclass
 class UserState:
     user_id: int
-    project_root: str = ""          # обычный режим
+    project_root: str = ""          # regular mode
     project_name: str = ""
-    sandbox_project_root: str = ""    # песочница (SANDBOX_ROOT)
+    sandbox_project_root: str = ""    # sandbox (SANDBOX_ROOT)
     sandbox_project_name: str = ""
     last_cwd: str = ""
     updated_at: float = field(default_factory=time.time)
@@ -66,8 +66,8 @@ class UserState:
         )
 
 
-# Валидное имя проекта — только буквы/цифры/дефис/подчёркивание/точка.
-# Это защита от path traversal через имя проекта из сообщения.
+# A valid project name consists of letters/digits/hyphen/underscore/dot only.
+# This guards against path traversal via a project name coming from a message.
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
@@ -81,7 +81,7 @@ class SessionStore:
         self._users: Dict[int, UserState] = {}
         self._load()
 
-    # -- персистентность -----------------------------------------------------
+    # -- persistence ---------------------------------------------------------
     def _load(self) -> None:
         if not self._path.exists():
             return
@@ -90,7 +90,7 @@ class SessionStore:
             for uid, d in data.items():
                 self._users[int(uid)] = UserState.from_dict(d)
         except (json.JSONDecodeError, OSError):
-            # Повреждённый файл — начинаем с чистого состояния, не падаем
+            # Corrupted file — start from a clean state rather than crash
             self._users = {}
 
     def _save(self) -> None:
@@ -98,10 +98,10 @@ class SessionStore:
             payload = {str(uid): st.to_dict() for uid, st in self._users.items()}
             self._path.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
         except OSError:
-            # Если не удалось сохранить — не роняем бота ради этого
+            # If saving fails, don't crash the bot over it
             pass
 
-    # -- доступ --------------------------------------------------------------
+    # -- access --------------------------------------------------------------
     def get(self, user_id: int) -> Optional[UserState]:
         return self._users.get(user_id)
 
@@ -118,10 +118,10 @@ class SessionStore:
         self._save()
 
     def list_projects(self, user_id: int, root: Optional[Path] = None) -> list[Path]:
-        """Список доступных проектов (подпапок корня).
+        """List available projects (subfolders of the root).
 
-        root — каталог, в котором ищем проекты. По умолчанию PROJECTS_ROOT
-        (обычный режим). Для @helpbot передаётся SANDBOX_ROOT.
+        root — the directory to scan for projects. By default PROJECTS_ROOT
+        (regular mode). For @helpbot SANDBOX_ROOT is passed.
         """
         root = root if root is not None else config.PROJECTS_ROOT
         if not root.exists():
@@ -133,30 +133,30 @@ class SessionStore:
         )
 
 
-# Единый экземпляр хранилища состояний (общий для всех хендлеров).
+# Single shared state store instance (common to all handlers).
 store = SessionStore()
 
 
 def claude_project_dir(cwd: Path) -> Path:
-    """Каталог, где Claude хранит JSONL сессий для заданного cwd.
+    """Directory where Claude stores JSONL sessions for a given cwd.
 
-    Claude кладёт сессии в ~/.claude/projects/<slug-cwd>/<session_id>.jsonl.
-    Slug — это путь, нормализованный: '/' -> '-', затем усечённый.
-    Здесь мы просто воспроизводим этот путь, чтобы найти существует ли сессия.
+    Claude keeps sessions in ~/.claude/projects/<slug-cwd>/<session_id>.jsonl.
+    The slug is a normalized path: '/' -> '-', then truncated. Here we simply
+    reproduce that path so we can check whether a session exists.
     """
     cls_projects = Path.home() / ".claude" / "projects"
-    # Claude составляет slug из абсолютного пути: '/'-' и '.' (напр. в
-    # sintyurin.ivan, .claude) превращаются в '-'. Раньше '.' меняли на '_' —
-    # slug не совпадал, и has_session искал несуществующий каталог, поэтому
-    # --continue никогда не передавался и каждая сессия начиналась заново.
+    # Claude builds the slug from the absolute path: '/' and '.' (e.g. in
+    # sintyurin.ivan, .claude) both become '-'. Previously '.' was mapped to '_',
+    # so the slug didn't match, has_session looked for a nonexistent directory,
+    # and --continue was never passed — each session started over.
     slug = str(cwd.resolve()).replace("/", "-").replace(".", "-")[:80]
     return cls_projects / slug
 
 
 def has_session(cwd: Path) -> bool:
-    """Есть ли хоть одна сессия Claude в каталоге cwd.
+    """Whether there is any Claude session in the cwd directory.
 
-    Проверяем наличие .jsonl в ~/.claude/projects/<slug-cwd>/.
+    Checks for a .jsonl in ~/.claude/projects/<slug-cwd>/.
     """
     d = claude_project_dir(cwd)
     if not d.exists():
@@ -168,11 +168,11 @@ def has_session(cwd: Path) -> bool:
 
 
 def find_latest_session(cwd: Path) -> Optional[str]:
-    """session_id самой свежей сессии Claude в каталоге cwd, либо None.
+    """The session_id of the newest Claude session in the cwd directory, or None.
 
-    Возвращает имя самого свежего по mtime .jsonl (без расширения) внутри
-    ~/.claude/projects/<slug-cwd>/. Это и есть session_id, который можно
-    передать в --resume. Если сессий нет — None (запустится новая).
+    Returns the name (without extension) of the newest .jsonl by mtime inside
+    ~/.claude/projects/<slug-cwd>/. That's the session_id which can be passed to
+    --resume. If there are no sessions — None (a new one will start).
     """
     d = claude_project_dir(cwd)
     if not d.exists():

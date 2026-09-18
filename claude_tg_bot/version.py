@@ -1,7 +1,7 @@
-"""Версия бота — единый источник для пакетного запуска и запуска скриптом.
+"""Bot version — a single source for package runs and script runs.
 
-Вынесена из config.py отдельно, чтобы менять версию релиза, не трогая
-конфигурацию.
+Kept separate from config.py so a release version can be bumped without
+touching the configuration.
 """
 
 BOT_VERSION: str = "0.6.0"

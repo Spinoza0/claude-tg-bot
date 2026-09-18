@@ -1,12 +1,12 @@
-"""Запуск Claude и разбор его вывода.
+"""Launching Claude and parsing its output.
 
-Бот вызывает Claude как субпроцесс в режиме печати (-p) с
---output-format stream-json --verbose, парсит поток JSONL и собирает
-человекочитаемый текст для отправки обратно в Telegram.
+The bot calls Claude as a subprocess in print mode (-p) with
+--output-format stream-json --verbose, parses the JSONL stream and assembles
+human-readable text to send back to Telegram.
 
-Используется именно командная строка, а не SDK: бот не предоставляет
-интерактивный терминал, поэтому вызов идёт одиночным проходом через -p.
-Команда настраивается в config.env через CLAUDE_COMMAND и COMMAND_ARGS.
+It uses the command line rather than the SDK: the bot provides no interactive
+terminal, so the call is a single pass via -p. The command is configured in
+config.env via CLAUDE_COMMAND and COMMAND_ARGS.
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional
 
-from . import config
+from . import config, i18n
 
-# События запуска Claude (команда, id сессии, ошибки) — в файл лога.
+# Claude launch events (command, session id, errors) — to the log file.
 logger = logging.getLogger("claude_tg_bot")
 
 
@@ -44,36 +44,36 @@ def _build_command(
     resume_session_id: Optional[str] = None,
     command_args: Optional[str] = None,
 ) -> list[str]:
-    """Собрать argv для Claude.
+    """Build the argv for Claude.
 
-    - С resume_session_id продолжаем КОНКРЕТНУЮ сессию через --resume <id>.
-      Явное --resume надёжнее --continue: интерактивный claude -c не находит
-      сессии, созданные через -p (--print), а --resume <id> находит всегда.
-    - Без id — просто новый запрос из -p: новая сессия.
-    - Т.к. это -p (печать), код выполняется неинтерактивно; для правки кода
-      это осознанное ограничение первой версии.
-    - command_args — переопределяет набор args (для смены модели при её
-      недоступности). None — используются базовые config.COMMAND_ARGS.
+    - With resume_session_id we continue a SPECIFIC session via --resume <id>.
+      An explicit --resume is more reliable than --continue: interactive `claude
+      -c` can't find sessions created via -p (--print), while --resume <id> always
+      finds them.
+    - Without an id — just a fresh -p request: a new session.
+    - Since it's -p (print), the code runs non-interactively; for editing code
+      that's a deliberate limitation of the first version.
+    - command_args — overrides the args set (for a model switch when unavailable).
+      None — the base config.COMMAND_ARGS are used.
     """
     cmd = [config.CLAUDE_COMMAND]
     args = config.COMMAND_ARGS if command_args is None else command_args
     cmd += shlex.split(args)
     cmd += ["--print", prompt]
     if resume_session_id:
-        # Продолжаем конкретную сессию. --resume сам подхватит и контекст, и
-        # права/историю именно этого id (в отличие от --continue, который
-        # ориентируется на индекс интерактивных сессий и может не найти
-        # сессию, созданную через -p).
+        # Continue a specific session. --resume picks up both the context and the
+        # permissions/history of exactly this id (unlike --continue, which is keyed
+        # to the index of interactive sessions and may not find a session created
+        # via -p).
         cmd += ["--resume", resume_session_id]
-    # Авто-режим: бот запускает Claude неинтерактивно (-p), и никто не может
-    # ответить на запрос разрешения из терминала. Поэтому передаём режим
-    # --permission-mode из настроек (по умолчанию bypassPermissions — полный
-    # авто). Иначе в -p клод печатает вопрос («Что разрешаешь?») и зависает
-    # до таймаута, не получая ответа. Значение берём из config, чтобы можно
-    # было сменить (напр. acceptEdits) без правки кода.
+    # Auto mode: the bot runs Claude non-interactively (-p), and nobody can answer
+    # a permission prompt from the terminal. So we pass the mode from settings
+    # (default bypassPermissions — full auto). Otherwise in -p claude prints a
+    # question ("What do you allow?") and hangs until the timeout without an
+    # answer. The value comes from config, so it can be changed (e.g. acceptEdits)
+    # without editing code.
     if config.CLAUDE_PERMISSION_MODE:
         cmd += ["--permission-mode", config.CLAUDE_PERMISSION_MODE]
-    # Системный промпт — добавляем, только если задан в конфиге.
     if config.CLAUDE_SYSTEM_PROMPT:
         cmd += ["--append-system-prompt", config.CLAUDE_SYSTEM_PROMPT]
     cmd += [
@@ -111,7 +111,7 @@ def _human_result(lines: Iterable[str]) -> ClaudeResult:
                     tname = block.get("name", "")
                     res.tools.append(tname)
         elif event_type == "user":
-            # Тут может быть tool_result; для читаемого текста они не нужны
+            # There may be a tool_result here; not needed for the readable text
             continue
         elif event_type == "result":
             if not text_parts:
@@ -133,69 +133,69 @@ async def run_claude(
     proc_registry: Optional[set[int]] = None,
     command_args: Optional[str] = None,
 ) -> ClaudeResult:
-    """Запустить Claude с промптом, вернуть результат.
+    """Launch Claude with a prompt, return the result.
 
-    resume_session_id — id сессии для --resume (продолжить конкретную сессию).
-    Если None — запускается новая сессия (после ответа id вернётся в
+    resume_session_id — the session id for --resume (continue a specific session).
+    If None — a new session starts (after the answer the id comes back in
     result.session_id).
 
-    image_paths: пути к файлам-картинкам, которые добавятся в промпт как
-    @ссылки (Claude принимает @path как attachment).
+    image_paths: paths to image files appended to the prompt as @links (Claude
+    accepts @path as an attachment).
 
-    proc_registry: множество pid, которое ведёт КОЛЛЕКЦИЮ процессов, запущенных
-    именно этим ботом. Сюда добавляется pid при старте и удаляется при выходе.
-    По нему бот может прибить ТОЛЬКО СВОИ процессы (команда /kill), не трогая
-    чужие/ручные сессии Claude.
+    proc_registry: a pid set that tracks the COLLECTION of processes launched
+    specifically by this bot. A pid is added on start and removed on exit. Using
+    it the bot can kill ONLY its own processes (the /kill command) without
+    touching foreign/manual Claude sessions.
 
-    command_args: переопределяет набор аргументов (смена модели при её
-    недоступности). None — базовые config.COMMAND_ARGS.
+    command_args: overrides the argument set (model switch when unavailable).
+    None — the base config.COMMAND_ARGS.
     """
     cwd = Path(cwd)
     if not cwd.exists():
-        raise FileNotFoundError(f"Каталог не существует: {cwd}")
+        raise FileNotFoundError(i18n.t("runner.dir_not_exists", path=cwd))
 
     final_prompt = prompt.strip()
     if image_paths:
-        # Добавляем упоминания файлов как @ссылки — именно так Claude
-        # распознаёт вложение в промпте (и в -p режиме). Формат "путь" в
-        # кавычках БЕЗ @ НЕ работает: модель видит просто текст про файл и не
-        # получает изображение (проверено: с @ картинка описывается верно,
-        # без @ — Claude пытается читать файл через Read/bash). Claude
-        # сам определит тип по расширению.
+        # Add file mentions as @links — this is exactly how Claude recognizes an
+        # attachment in a prompt (also in -p mode). The format "path" in quotes
+        # WITHOUT @ does NOT work: the model sees plain text about a file and
+        # doesn't get the image (verified: with @ the image is described correctly,
+        # without @ Claude tries to read the file via Read/bash). Claude figures
+        # out the type by the extension itself.
         refs = [f"@{p}" for p in image_paths]
         if final_prompt:
-            final_prompt = f"{final_prompt}\n\nФайлы (приложены): {', '.join(refs)}"
+            final_prompt = final_prompt + i18n.t("runner.files_attached", refs=", ".join(refs))
         else:
-            # Промпта нет (картинка без подписи): отдаём в Claude только
-            # @ссылки, без текста — он сам увидит вложение и сохранит его
-            # в контексте сессии. Приписку «Файлы (приложены)» не добавляем,
-            # чтобы не воспринималась как задание.
+            # No prompt (image without a caption): give Claude only the @links,
+            # without text — it sees the attachment itself and keeps it in the
+            # session context. We don't add the "Files (attached)" note, so it
+            # isn't taken as a task.
             final_prompt = " ".join(refs)
 
     cmd = _build_command(final_prompt, cwd, resume_session_id, command_args)
     run_cwd = str(cwd)
-    logger.info("Запуск Claude в %s (пакет args: %s)", run_cwd, command_args or "базовые")
+    logger.info("Launching Claude in %s (args set: %s)", run_cwd, command_args or "base")
 
-    # Ограничение длины промпта — защита от гигантских сообщений
+    # Prompt length limit — protection against giant messages
     if len(final_prompt) > config.MAX_PROMPT_LENGTH:
-        raise ValueError(f"Промпт слишком длинный ({len(final_prompt)} символов)")
+        raise ValueError(i18n.t("runner.prompt_too_long", len=len(final_prompt)))
 
-    # start_new_session=True — запускаем субпроцесс в СОБСТВЕННОЙ сессии/группе.
-    # Обёртка может породить дочерние процессы (например, свой прокси-сервер и
-    # сам Claude). Если убить только родителя (proc.kill()), дети осиротеют
-    # (PPID→1) и продолжат висеть, держа скачанные файлы и порты. Убийство всей
-    # ГРУППЫ (-pgid) убирает их разом.
+    # start_new_session=True — run the subprocess in its OWN session/group.
+    # The wrapper may spawn child processes (e.g. its own proxy server and Claude
+    # itself). If we kill only the parent (proc.kill()), the children become
+    # orphaned (PPID→1) and keep hanging, holding downloaded files and ports.
+    # Killing the whole GROUP (-pgid) removes them at once.
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         cwd=run_cwd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         start_new_session=True,
-        # Наследуем окружение, чтобы Claude подхватил свои env
+        # Inherit the environment so Claude picks up its own env
         env=os.environ.copy(),
     )
-    # Регистрируем pid кластера как «запущенный этим ботом», чтобы /kill мог
-    # прибить только свои, а не все процессы Claude в системе.
+    # Register the cluster pid as "launched by this bot", so /kill can kill only
+    # its own, not every Claude process on the system.
     if proc_registry is not None:
         proc_registry.add(proc.pid)
 
@@ -203,16 +203,16 @@ async def run_claude(
     err_lines: list[str] = []
 
     async def _read(name, stream):
-        """Читать поток ЧАНКАМИ, а не построчно.
+        """Read the stream in CHUNKS, not line by line.
 
-        ВАЖНО: `async for raw in stream` в asyncio читает по строкам
-        (readuntil) и падает с LimitOverrunError на ОЧЕНЬ длинных строках
-        (jsonl при --output-format stream-json, особенно большие hook-контексты
-        и ответы с вложениями-видео>64КБ) → чтение останавливается → буфер
-        PIPE переполняется → процесс блокируется → бот висит до таймаута.
-        Поэтому читаем сырые чанки и разбиваем на строки вручную.
+        IMPORTANT: `async for raw in stream` in asyncio reads by line (readuntil)
+        and fails with LimitOverrunError on VERY long lines (jsonl with
+        --output-format stream-json, especially large hook contexts and responses
+        with video attachments >64KB) → reading stops → the PIPE buffer overflows
+        → the process blocks → the bot hangs until the timeout. So we read raw
+        chunks and split into lines manually.
         """
-        buf = ""  # хвост неполной строки между чанками
+        buf = ""  # the tail of an incomplete line between chunks
         target = out_lines if name == "stdout" else err_lines
         try:
             while True:
@@ -220,14 +220,13 @@ async def run_claude(
                 if not raw:
                     break
                 buf += raw.decode(errors="replace")
-                # Разбиваем по переносам; последний неполный кусок остаётся в buf.
+                # Split by newlines; the last incomplete piece stays in buf.
                 *parts, buf = buf.split("\n")
                 target.extend(parts)
         except asyncio.CancelledError:
             raise
         except Exception:
             pass
-        # Хвост последней строки без переноса
         if buf:
             target.append(buf)
 
@@ -237,7 +236,7 @@ async def run_claude(
     ]
 
     def _kill_group():
-        """Убить весь процесс-кластер (родитель + дети), не оставляя осиротевших."""
+        """Kill the whole process cluster (parent + children), leaving no orphans."""
         try:
             pgid = os.getpgid(proc.pid)
         except ProcessLookupError:
@@ -247,7 +246,7 @@ async def run_claude(
         except ProcessLookupError:
             pass
         except Exception:
-            # Фолбэк — убиваем хотя бы родителя
+            # Fallback — kill at least the parent
             try:
                 proc.kill()
             except Exception:
@@ -261,57 +260,57 @@ async def run_claude(
     except asyncio.TimeoutError:
         _kill_group()
         await proc.wait()
-        # Дочитываем потоки, чтобы в stderr попала диагностика proxy
+        # Drain the streams so the proxy diagnostics end up in stderr
         await asyncio.gather(*tasks, return_exceptions=True)
         tail = _tail_stderr(err_lines, proc_pid=proc.pid, limit=8)
         res = ClaudeResult()
-        logger.warning("Превышен таймаут запуска Claude в %s", run_cwd)
-        res.text = "⏱️ Превышен таймаут. Попробуй сократить запрос."
-        # Подмешиваем причину из stderr, если proxy оставил диагностику.
+        logger.warning("Claude launch timed out in %s", run_cwd)
+        res.text = i18n.t("runner.timeout")
+        # Mix in the cause from stderr, if the proxy left diagnostics.
         if tail:
-            res.text += f"\n\n(диагностика: {tail})"
+            res.text += i18n.t("runner.timeout_diag", tail=tail)
         res.exit_code = 1
         return res
     except asyncio.CancelledError:
-        # Задачу отменили извне (напр. команда /kill) — убиваем процесс-кластер,
-        # чтобы не осталось осиротевших дочерних процессов, и пробрасываем отмену дальше.
+        # The task was cancelled externally (e.g. command /kill) — kill the process
+        # cluster so no orphaned children remain, and propagate the cancel further.
         _kill_group()
         await proc.wait()
         await asyncio.gather(*tasks, return_exceptions=True)
         raise
     finally:
-        # Снимаем pid из реестра «запущенных ботом» — процесс завершён/убит.
+        # Remove the pid from the "launched by this bot" registry — process done/killed.
         if proc_registry is not None:
             proc_registry.discard(proc.pid)
-        # Гарантированно дочитываем потоки
+        # Guaranteed to drain the streams
         await asyncio.gather(*tasks, return_exceptions=True)
 
     res = _human_result(out_lines)
     res.exit_code = proc.returncode or res.exit_code
 
-    # Если процесс завершился с ошибкой, но мы не получили читаемый текст, —
-    # показываем хвост stderr, иначе бот молча вернёт пустоту вместо причины.
+    # If the process exited with an error but we got no readable text — show the
+    # stderr tail, otherwise the bot silently returns emptiness instead of the cause.
     if res.exit_code != 0 and not res.text:
         tail = _tail_stderr(err_lines, proc_pid=proc.pid)
         if tail:
-            res.text = f"⚠️ Ошибка запуска Claude (код {res.exit_code}):\n{tail}"
+            res.text = i18n.t("runner.run_error", code=res.exit_code, tail=tail)
     if res.exit_code != 0:
-        logger.error("Запуск Claude завершился с кодом %s: %s", res.exit_code,
-                     (res.text or "").splitlines()[0][:200] if res.text else "без текста")
+        logger.error("Claude launch finished with code %s: %s", res.exit_code,
+                     (res.text or "").splitlines()[0][:200] if res.text else "no text")
     return res
 
 
 def _tail_stderr(err_lines: list[str], limit: int = 3, proc_pid: Optional[int] = None) -> str:
-    """Последние содержательные строки диагностики.
+    """The last meaningful diagnostics lines.
 
-    Берём хвост stderr процесса, а если он пуст — дополнительно читаем
-    журнальный файл обёртки (/tmp/claude-proxy-<pid>.log), куда та пишет
-    реальную причину сбоя (например, ошибку авторизации или недоступность
-    модели). Это важно: без него бот при сбое авторизации/сети молча висит до
-    таймаута, а причина не видна.
+    We take the stderr tail of the process; if it's empty, we additionally read
+    the wrapper's log file (/tmp/claude-proxy-<pid>.log) where it writes the real
+    cause of a failure (e.g. an authorization error or model unavailability).
+    This matters: without it, on an auth/network failure the bot silently hangs
+    until the timeout, and the cause is invisible.
     """
     lines = [ln.strip() for ln in err_lines if ln.strip()]
-    # proxy печатает баннер + прогресс; берём хвост и убираем слишком длинные
+    # the proxy prints a banner + progress; take the tail and drop too-long ones
     tail = "\n".join(lines[-limit * 4:])[:600]
     if not tail and proc_pid:
         tail = _read_proxy_log(proc_pid)
@@ -319,14 +318,14 @@ def _tail_stderr(err_lines: list[str], limit: int = 3, proc_pid: Optional[int] =
 
 
 def _read_proxy_log(proc_pid: int) -> str:
-    """Прочитать свежий диагностический журнал обёртки (если есть).
+    """Read the wrapper's fresh diagnostics log (if any).
 
-    Лог-файл называется /tmp/claude-proxy-<pid>.log, куда обёртка
-    перенаправляет вывод своего вспомогательного процесса. Нас интересуют
-    строки [ERROR] и последние строки, а не баннер/прогресс.
+    The log file is /tmp/claude-proxy-<pid>.log, where the wrapper redirects the
+    output of its helper process. We're after the [ERROR] lines and the last few
+    lines, not the banner/progress.
     """
     import glob
-    # Ищем лог по pid процесса (bash-обёртки) и «соседние», если pid уехал
+    # Look for the log by the process pid (bash wrappers) and "neighbor" ones if the pid moved
     candidates = [f"/tmp/claude-proxy-{proc_pid}.log"] + sorted(
         glob.glob("/tmp/claude-proxy-*.log"), key=os.path.getmtime, reverse=True
     )
@@ -336,7 +335,7 @@ def _read_proxy_log(proc_pid: int) -> str:
                 content = f.read()
         except OSError:
             continue
-        # Строки с ERROR и последние INFO, убираем слишком длинные/шумные
+        # ERROR lines and last INFO, dropping too-long/noisy ones
         errs = [ln for ln in content.splitlines()
                 if "[ERROR]" in ln and ln.strip()]
         tail = ("\n".join(errs[-4:]) if errs else "\n".join(
@@ -348,23 +347,10 @@ def _read_proxy_log(proc_pid: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Утилиты для Telegram-хендлеров
+# Utilities for Telegram handlers
 # ---------------------------------------------------------------------------
 
 def format_command_hint() -> str:
     mode = (config.DELETE_MODE or "trash").lower()
-    where = "в корзину" if mode == "trash" else "навсегда"
-    return (
-        "📖 Доступные команды:\n"
-        "/start — начать и выбрать проект\n"
-        "/list — список доступных проектов\n"
-        "/switch <имя> — переключиться на проект\n"
-        "/new [имя] — создать новый проект\n"
-        "/status — текущий проект и сессия\n"
-        "/clear — сначала автоматически вызвать /clearmedia (очистка вложений), затем отправить в Claude (сброс контекста)\n"
-        f"/clearmedia — удалить скачанные вложения текущего проекта ({where})\n"
-        "/mediasize — показать количество и объём скачанных вложений\n"
-        "/kill — убить зависшие сессии Claude, запущенные ботом\n"
-        f"{config.SANDBOX_COMMAND} <команда/текст> — работа в песочнице в любом чате (SANDBOX_ROOT)\n"
-        "/help — эта справка"
-    )
+    where = i18n.t("cmd.trash") if mode == "trash" else i18n.t("cmd.permanent")
+    return i18n.t("runner.command_hint", where=where, sandbox_cmd=config.SANDBOX_COMMAND)

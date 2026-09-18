@@ -1,10 +1,10 @@
-"""Логирование в файл для диагностики (issue #12).
+"""File logging for diagnostics (issue #12).
 
-По умолчанию бот не пишет логи. Логирование включается флагом командной
-строки `--log[=уровень]` при запуске `python -m claude_tg_bot`. Файлы
-кладутся в каталог `~/.claude-tg-bot/logs/`. Если запуск идёт в интерактивном
-терминале (tty) без флага `--log`, а старые логи уже есть — бот спрашивает,
-удалить ли их (по умолчанию — не удалять).
+By default the bot does not write logs. Logging is enabled by the command-line
+flag `--log[=level]` when running `python -m claude_tg_bot`. Files land in
+`~/.claude-tg-bot/logs/`. If the launch is in an interactive terminal (tty)
+without `--log`, and old logs already exist, the bot asks whether to delete
+them (by default — not to delete).
 """
 
 from __future__ import annotations
@@ -15,26 +15,27 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-# Уровни логирования, доступные через --log[=уровень]. Ключ приводится к верхнему
-# регистру, поэтому принимаем и 'info', и 'INFO'.
+from . import i18n
+
+# Log levels available via --log[=level]. The key is uppercased, so both 'info'
+# and 'INFO' are accepted.
 _LEVELS = {"error": logging.ERROR, "warning": logging.WARNING,
            "warn": logging.WARNING, "info": logging.INFO, "debug": logging.DEBUG}
 
-# Логгеры, которые направляем в файл: свой claude_tg_bot (события бота) и
-# pyrogram (ошибки подключения/ретраи). Что именно попадёт — решает уровень.
+# Loggers routed to the file: our own claude_tg_bot (bot events) and pyrogram
+# (connection errors/retries). Which ones actually land — the level decides.
 _LOGGERS = ("claude_tg_bot", "pyrogram")
 
 
 def log_dir() -> Path:
-    """Каталог, куда пишутся логи: ~/.claude-tg-bot/logs."""
     return Path.home() / ".claude-tg-bot" / "logs"
 
 
 def parse_level(value: Optional[str]) -> Optional[int]:
-    """Превратить значение флага --log в уровень logging.
+    """Turn the --log value into a logging level.
 
-    None/пусто — ERROR (по умолчанию). 'info'/'debug'/'error' — соответствует.
-    Незнакомое значение игнорируем, возвращая ERROR (не падаем).
+    None/empty — ERROR (default). 'info'/'debug'/'error' map accordingly.
+    Unknown values are ignored, returning ERROR (we don't crash).
     """
     if not value:
         return logging.ERROR
@@ -42,12 +43,12 @@ def parse_level(value: Optional[str]) -> Optional[int]:
 
 
 def parse_log_flag(argv: list[str]) -> tuple[bool, int]:
-    """Разобрать argv на предмет флага --log.
+    """Parse argv for the --log flag.
 
-    Возвращает (включено, уровень). Поддерживается `--log` (уровень ERROR)
-    и `--log=info` / `--log=debug` / `--log=error`. Флаг также может идти
-    отдельным словом `--log info` (не обрабатываем — оставляем простым,
-    только `--log[=уровень]`, как в документации).
+    Returns (enabled, level). Supports `--log` (level ERROR) and
+    `--log=info` / `--log=debug` / `--log=error`. The flag can also come as a
+    separate word `--log info` (we don't handle it — we keep it simple, only
+    `--log[=level]`, as documented).
     """
     for arg in argv:
         if arg == "--log":
@@ -58,10 +59,10 @@ def parse_log_flag(argv: list[str]) -> tuple[bool, int]:
 
 
 def setup_logging(level: int, path: Path) -> Path:
-    """Включить файловое логирование для логгеров бота и pyrogram.
+    """Enable file logging for the bot and pyrogram loggers.
 
-    Добавляет FileHandler к каждому из _LOGGERS (со своим форматтером),
-    выставляя уровень level. Возвращает путь к лог-файлу.
+    Adds a FileHandler to each of _LOGGERS (with its own formatter), setting the
+    level to `level`. Returns the path to the log file.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     handler = logging.FileHandler(path, encoding="utf-8")
@@ -77,12 +78,12 @@ def setup_logging(level: int, path: Path) -> Path:
 
 
 def log_filename() -> Path:
-    """Имя файла лога с датой, напр. claude-tg-bot-2026-09-15.log."""
+    """A dated log filename, e.g. claude-tg-bot-2026-09-15.log."""
     return log_dir() / f"claude-tg-bot-{datetime.now():%Y-%m-%d}.log"
 
 
 def old_logs() -> list[Path]:
-    """Все существующие файлы логов в каталоге (если каталог есть)."""
+    """All existing log files in the directory (if the directory exists)."""
     d = log_dir()
     if not d.exists():
         return []
@@ -90,33 +91,32 @@ def old_logs() -> list[Path]:
 
 
 def is_tty() -> bool:
-    """Запущен ли бот из интерактивного терминала (есть ввод с клавиатуры)."""
     return sys.stdin.isatty() and sys.stdout.isatty()
 
 
 def _ask_yes_no(prompt: str, default: bool = False) -> bool:
-    """Спросить y/n с дефолтом. Только для интерактивного запуска (tty)."""
+    """Ask y/n with a default. Only for interactive (tty) launches."""
     try:
         answer = input(prompt).strip().lower()
     except (EOFError, KeyboardInterrupt):
         return default
     if not answer:
         return default
-    return answer in ("y", "yes", "д", "да")
+    return answer in ("y", "yes")
 
 
 def maybe_cleanup_old_logs() -> None:
-    """Если бот запущен без логов, но старые логи есть — спросить об удалении.
+    """If the bot runs without logs but old logs exist — ask about deletion.
 
-    Выполняется только при интерактивном запуске (tty). По умолчанию (или при
-    неинтерактивном запуске/в фоне) — ничего не удаляет.
+    Only done on an interactive launch (tty). By default (or on a non-interactive
+    / background launch) it deletes nothing.
     """
     existing = old_logs()
     if not existing or not is_tty():
         return
     n = len(existing)
-    print(f"⚠️ Найдены старые логи ({n} файл(ов) в {log_dir()}).")
-    if _ask_yes_no("Удалить их? [y/N] (по умолчанию НЕ удалять): ", default=False):
+    print(i18n.t("log.found_old", n=n, path=log_dir()))
+    if _ask_yes_no(i18n.t("log.ask_delete"), default=False):
         removed = 0
         for p in existing:
             try:
@@ -124,4 +124,4 @@ def maybe_cleanup_old_logs() -> None:
                 removed += 1
             except OSError:
                 pass
-        print(f"Удалено {removed} файл(ов) логов.")
+        print(i18n.t("log.deleted", n=removed))

@@ -1,37 +1,38 @@
-"""Конфигурация бота.
+"""Bot configuration.
 
-Все данные для подключения к Telegram и запуска Claude берутся из
-переменных окружения (файл config.env). Это позволяет не зашивать секреты в
-код. Файл ищется в двух местах (по приоритету):
+All data for connecting to Telegram and launching Claude comes from environment
+variables (the config.env file). This keeps secrets out of the code. The file is
+looked up in two places (by priority):
 
-  1. ~/.claude-tg-bot/config.env        — каталог, где лежит папка sandbox;
-  2. <каталог claude-tg-bot.sh>/config.env  — рядом со скриптом запуска.
+  1. ~/.claude-tg-bot/config.env        — the folder that holds the sandbox;
+  2. <claude-tg-bot.sh folder>/config.env  — next to the launch script.
 
-Если файла нет ни там, ни там — бот завершает работу (см. validate(): бросает
-RuntimeError с указанием, где должен лежать config.env).
+If the file is found in neither, the bot exits (see validate(): it raises a
+RuntimeError stating where config.env should be).
 """
 
 import os
 from pathlib import Path
 from typing import Iterable, Optional
 
+from . import i18n
 from .version import BOT_VERSION
 
-# Корень проекта (родитель пакета claude_tg_bot) — там лежат run.sh и state.json.
+# Project root (parent of the claude_tg_bot package) — where run.sh and state.json live.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _find_config_env(candidates: Optional[Iterable[Path]] = None) -> Optional[Path]:
-    """Найти config.env в порядке приоритета.
+    """Find config.env by priority.
 
-    Сначала ~/.claude-tg-bot/config.env (каталог, где находится папка sandbox),
-    затем <каталог claude-tg-bot.sh>/config.env. Если нет ни там, ни там —
-    возвращаем None (бот тогда завершает работу, см. validate()).
+    First ~/.claude-tg-bot/config.env (the folder holding the sandbox), then
+    <claude-tg-bot.sh folder>/config.env. If neither — return None (the bot then
+    exits; see validate()).
     """
     if candidates is None:
         candidates = [
-            Path.home() / ".claude-tg-bot" / "config.env",  # каталог папки sandbox
-            _PROJECT_ROOT / "config.env",                    # каталог claude-tg-bot.sh
+            Path.home() / ".claude-tg-bot" / "config.env",  # sandbox folder
+            _PROJECT_ROOT / "config.env",                    # claude-tg-bot.sh folder
         ]
     for p in candidates:
         if p.is_file():
@@ -39,7 +40,7 @@ def _find_config_env(candidates: Optional[Iterable[Path]] = None) -> Optional[Pa
     return None
 
 
-# Все места, где бот ищет config.env (для сообщения об ошибке в validate).
+# All the places the bot looks for config.env (for the error message in validate).
 CONFIG_ENV_CANDIDATES = [
     Path.home() / ".claude-tg-bot" / "config.env",
     _PROJECT_ROOT / "config.env",
@@ -52,13 +53,13 @@ try:
     _env_file = _find_config_env()
     if _env_file is not None:
         load_dotenv(_env_file)
-        # Путь модуля, чтобы бот мог показать, откуда прочитан конфиг.
+        # The module path, so the bot can show where the config was read from.
         CONFIG_ENV_PATH: Optional[Path] = _env_file
     else:
-        # Файла нет ни в одном месте — validate() завершит работу.
+        # The file is missing everywhere — validate() will stop the run.
         CONFIG_ENV_PATH: Optional[Path] = None
 except ImportError:
-    # python-dotenv опционален: можно задать переменные вручную
+    # python-dotenv is optional: variables can be set manually
     CONFIG_ENV_PATH: Optional[Path] = None
 
 
@@ -66,29 +67,29 @@ except ImportError:
 # Telegram (MTProto)
 # ---------------------------------------------------------------------------
 
-# Получаем из https://my.telegram.org/apps
+# Get these from https://my.telegram.org/apps
 API_ID: int = int(os.getenv("API_ID", "0"))
 API_HASH: str = os.getenv("API_HASH", "")
 
-# Номер телефона аккаунта (в формате +7XXXXXXXXXX), под которым работает бот
+# Phone number of the account the bot runs under (format +7XXXXXXXXXX)
 PHONE: str = os.getenv("PHONE", "")
 
-# Имя файла сессии MTProto-клиента (хранится в .session рядом с ботом)
+# MTProto client session file name (stored in .session next to the bot)
 SESSION_NAME: str = os.getenv("SESSION_NAME", "claude-tg-bot")
 
-# MTProto-прокси в формате tg://proxy?server=...&port=...&secret=...
-# MTProto-клиент принимает его нативно. Пример (фейковый):
+# MTProto proxy in the form tg://proxy?server=...&port=...&secret=...
+# The MTProto client accepts it natively. Example (fake):
 # tg://proxy?server=example.example.com&port=443&secret=0000...
 MT_PROXY: str = os.getenv("MT_PROXY", "")
 
-# Пароль облака (двухфакторка) — если есть
+# Cloud password (two-factor) — if any
 CLOUD_PASSWORD: Optional[str] = os.getenv("CLOUD_TOKEN_PASSWORD") or None
 
 def _parse_ids(raw: str) -> set:
-    """Парсит список id из строки вида числа, разделённые запятыми.
+    """Parse an id list from a string of comma-separated numbers.
 
-    Поддерживает значения В КАВЫЧКАХ (одинарных или двойных) и без них,
-    положительные и отрицательные числа, пробелы вокруг. Примеры:
+    Handles values IN QUOTES (single or double) and without them, positive and
+    negative numbers, surrounding spaces. Examples:
         "\"777\",\"-1001234567890\""    -> {777, -1001234567890}
         "777,-100123"                    -> {777, -100123}
         ""                               -> set()
@@ -96,7 +97,7 @@ def _parse_ids(raw: str) -> set:
     result = set()
     for part in raw.split(","):
         part = part.strip().strip('"').strip("'").strip()
-        # допускаем минус + цифры (отрицательные chat_id группы)
+        # allow a minus + digits (negative group chat_id)
         if part.lstrip("-").isdigit():
             result.add(int(part))
     return result
@@ -109,14 +110,14 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
-# Список telegram user_id (int), которым разрешено писать боту.
-# Если пусто — бот не отвечает никому (безопасно).
+# List of telegram user_id (int) allowed to write to the bot.
+# If empty — the bot answers nobody (safe).
 ALLOWED_USERS = _parse_ids(os.getenv("ALLOWED_USERS", ""))
 
-# Конкретные chat_id, в КОТОРЫХ бот отвечает. Значения можно в кавычках:
+# The specific chat_id the bot answers IN. Values can be in quotes:
 #   ALLOWED_CHAT_IDS="-1001234567890","-1009876543210"
-# Бот отвечает ТОЛЬКО в этих чатах и только если отправитель в ALLOWED_USERS.
-# Пусто = бот не отвечает нигде (закрыт) — намеренно.
+# The bot answers ONLY in these chats and only if the sender is in ALLOWED_USERS.
+# Empty = the bot answers nowhere (closed) — deliberately.
 ALLOWED_CHAT_IDS = _parse_ids(os.getenv("ALLOWED_CHAT_IDS", ""))
 
 
@@ -124,154 +125,176 @@ ALLOWED_CHAT_IDS = _parse_ids(os.getenv("ALLOWED_CHAT_IDS", ""))
 # Claude
 # ---------------------------------------------------------------------------
 
-# Команда для запуска Claude. По умолчанию — обычный "claude".
-# Можно указать другую обёртку (собственную или стороннюю); значение — имя
-# исполняемого файла или полный путь, подставляется в argv как есть.
+# Command to launch Claude. By default the plain "claude".
+# Another wrapper (own or third-party) can be set; the value is the executable
+# name or a full path, substituted into argv as-is.
 CLAUDE_COMMAND: str = os.getenv("CLAUDE_COMMAND", "claude")
 
-# Режим разрешений (--permission-mode) для неинтерактивного запуска (-p).
-# Бот запускает Claude без терминала, поэтому никто не может ответить на
-# запрос разрешения — Claude печатает «Что разрешаешь?» и зависает до таймаута.
-# Поэтому включаем авто-режим. Валидные значения:
-#   bypassPermissions — полный авто (выполняет всё без подтверждений);
-#   acceptEdits       — авто для правок файлов, опасные тулзы могут спросить;
-#   plan              — только планирует, ничего не выполняет;
-#   default           — стандартный (может спросить и зависнуть).
-# ВАЖНО: bypassPermissions — доверенный агент, он может делать разрушительные
-# действия без подтверждения. Смени на acceptEdits, если нужна осторожность.
+# Permission mode (--permission-mode) for the non-interactive launch (-p).
+# The bot runs Claude without a terminal, so nobody can answer a permission
+# prompt — Claude prints "What do you allow?" and hangs until the timeout.
+# That's why we enable the auto mode. Valid values:
+#   bypassPermissions — full auto (does everything without confirmations);
+#   acceptEdits       — auto for file edits, dangerous tools may ask;
+#   plan              — only plans, executes nothing;
+#   default           — standard (may ask and hang).
+# IMPORTANT: bypassPermissions is a trusted agent; it can do destructive actions
+# without confirmation. Switch to acceptEdits if you need caution.
 CLAUDE_PERMISSION_MODE: str = os.getenv("CLAUDE_PERMISSION_MODE", "bypassPermissions").strip()
 
-# Дополнительные аргументы командной строки, добавляемые к CLAUDE_COMMAND.
-# Задаются одной строкой и разбиваются на отдельные аргументы (через shlex).
-# Позволяет передать обёртке любые её специфичные параметры. Пример для
-# Cline-обёртки: --provider openai-compatible (идентификатор провайдера,
-# откуда берётся модель). Для обычного "claude" обычно не требуется и
-# оставляется пустым.
+# Extra command-line arguments added to CLAUDE_COMMAND.
+# Given as one string and split into separate arguments (via shlex).
+# Lets you pass any wrapper-specific parameters. Example for the Cline wrapper:
+# --provider openai-compatible (the provider id the model comes from). For the
+# plain "claude" it's usually not needed and left empty.
 COMMAND_ARGS: str = os.getenv("COMMAND_ARGS", "").strip()
 
-# Альтернативный набор аргументов для смены модели при её недоступности.
-# Если основная модель не отвечает (API Error / Cannot connect / 502 / 503),
-# бот повторяет запрос, подставляя ЭТОТ набор ВМЕСТО COMMAND_ARGS (обычно здесь
-# указывают другого провайдера/модель). Если задан — бот чередует базовый и
-# альтернативный наборы до исчерпания RETRY_LIMIT. Если пуст — повторяет запрос
-# с базовыми аргументами без смены модели.
+# Alternative argument set to switch the model when it's unavailable.
+# If the main model doesn't answer (API Error / Cannot connect / 502 / 503),
+# the bot retries the request substituting THIS set INSTEAD OF COMMAND_ARGS
+# (usually another provider/model goes here). If set, the bot alternates the base
+# and alternative sets until RETRY_LIMIT is exhausted. If empty — it retries with
+# the base arguments without a model switch.
 COMMAND_ARGS_ALTERNATIVE: str = os.getenv("COMMAND_ARGS_ALTERNATIVE", "").strip()
 
-# Системный промпт для Claude (--append-system-prompt). Передаётся модели как
-# системная инструкция. Если пусто — флаг не добавляется вовсе, Claude работает
-# со стандартным системным промптом.
+# System prompt for Claude (--append-system-prompt). Passed to the model as a
+# system instruction. If empty — the flag is not added at all and Claude works
+# with its standard system prompt.
 CLAUDE_SYSTEM_PROMPT: str = os.getenv("CLAUDE_SYSTEM_PROMPT", "").strip()
 
-# Корень, внутри которого боту разрешено создавать/переключать проекты.
-# Не даём боту работать с произвольными путями — песочница.
+# The root within which the bot may create/switch projects.
+# We don't let the bot work with arbitrary paths — a sandbox.
 PROJECTS_ROOT: Path = Path(
     os.getenv("PROJECTS_ROOT", str(Path.home() / "projects"))
 ).resolve()
 
-# Каталог по умолчанию для нового чата, если юзер не переключил проект
+# Default directory for a new chat if the user hasn't switched a project
 DEFAULT_PROJECT: str = os.getenv("DEFAULT_PROJECT", "")
 
-# Максимальная длина промпта (символов), отправляемого в Claude
+# Maximum prompt length (chars) sent to Claude
 MAX_PROMPT_LENGTH: int = int(os.getenv("MAX_PROMPT_LENGTH", "8000"))
 
-# Таймаут одного вызова Claude (сек). 0 = без лимита.
+# Timeout of a single Claude call (sec). 0 = no limit.
 CLAUDE_TIMEOUT_SECONDS: int = int(os.getenv("CLAUDE_TIMEOUT_SECONDS", "600"))
 
 
 # ---------------------------------------------------------------------------
-# Единая схема повторов при транзиентных сбоях (подключение, отправка, Claude)
+# Unified retry scheme for transient failures (connection, sending, Claude)
 # ---------------------------------------------------------------------------
-# Один механизм ретраев на все места: после N-й неудачи пауза растёт как
-# min(base * multiplier^(N-1), max). При успехе счётчик сбрасывается к base.
-# RETRY_LIMIT — сколько попыток суммарно (включая первую) до отказа.
+# One retry mechanism everywhere: after the N-th failure the pause grows as
+# min(base * multiplier^(N-1), max). On success the counter resets to base.
+# RETRY_LIMIT — total attempts (including the first) before giving up.
 RETRY_LIMIT: int = int(os.getenv("RETRY_LIMIT", "5"))
-RETRY_BASE_DELAY: float = float(os.getenv("RETRY_BASE_DELAY", "60"))      # сек
-RETRY_MAX_DELAY: float = float(os.getenv("RETRY_MAX_DELAY", "300"))       # сек (5 мин)
+RETRY_BASE_DELAY: float = float(os.getenv("RETRY_BASE_DELAY", "60"))      # sec
+RETRY_MAX_DELAY: float = float(os.getenv("RETRY_MAX_DELAY", "300"))       # sec (5 min)
 RETRY_MULTIPLIER: float = float(os.getenv("RETRY_MULTIPLIER", "2.0"))
 
-# Короткие повторы для отправки сообщений/индикаторов в Telegram — секунды,
-# чтобы ответ не «висел» долго (это транзиентные меж-DC ошибки, не потеря сети).
+# Short retries for sending messages/indicators to Telegram — seconds, so the
+# reply doesn't "hang" long (these are transient inter-DC errors, not a network loss).
 MESSAGE_RETRY_LIMIT: int = int(os.getenv("MESSAGE_RETRY_LIMIT", "3"))
 MESSAGE_RETRY_DELAY: float = float(os.getenv("MESSAGE_RETRY_DELAY", "2.0"))
 
 
 # ---------------------------------------------------------------------------
-# Управление скачанными вложениями (фото/видео/звук/файл)
+# Downloaded attachment management (photo/video/audio/file)
 # ---------------------------------------------------------------------------
-# AUTO_DELETE_MEDIA — автоудалять ли вложение после отправки в claude.
-#   true  — удалить (по DELETE_MODE) после обработки.
-#   false — НЕ удалять автоматически; очищать только вручную через /clearmedia.
-#   По умолчанию false (безопаснее — ничего не теряется без явной команды).
+# AUTO_DELETE_MEDIA — auto-delete an attachment after sending it to claude.
+#   true  — delete (per DELETE_MODE) after processing.
+#   false — do NOT delete automatically; clean only manually via /clearmedia.
+#   Default false (safer — nothing is lost without an explicit command).
 AUTO_DELETE_MEDIA: bool = _env_bool("AUTO_DELETE_MEDIA", False)
 
-# DELETE_MODE — куда удалять вложение (и по /clearmedia, и при автоудалении):
-#   trash      — в корзину macOS (восстанавливаемо). Значение по умолчанию.
-#   permanent  — удалить навсегда (без возможности восстановить).
+# DELETE_MODE — where to delete an attachment (for /clearmedia and auto-delete):
+#   trash      — to the macOS Trash (restorable). Default value.
+#   permanent  — delete forever (no way to restore).
 DELETE_MODE: str = (os.getenv("DELETE_MODE", "trash").strip().lower() or "trash")
 
-# KEEP_AWAKE — не давать макбуку засыпать, пока бот работает (caffeinate -dimsu).
-#   true  — держать систему бодрствующей (иначе при засыпании отключается сеть
-#           и бот перестаёт принимать/отвечать на сообщения).
-#   false — ничего не менять. По умолчанию выключено (решает пользователь).
-#   В claude-tg-bot.sh читается как переменная окружения config.env.
+# KEEP_AWAKE — keep the laptop awake while the bot runs (caffeinate -dimsu).
+#   true  — keep the system awake (otherwise the network drops on sleep and the
+#           bot stops receiving/answering messages).
+#   false — change nothing. Default off (the user decides).
+#   In claude-tg-bot.sh it's read as a config.env environment variable.
 KEEP_AWAKE: bool = _env_bool("KEEP_AWAKE", False)
 
 
 # ---------------------------------------------------------------------------
-# Песочница (@helpbot)
+# Sandbox (@helpbot)
 # ---------------------------------------------------------------------------
-# SANDBOX_ROOT — абсолютный путь каталога, в котором Claude запускается
-# для сообщений @helpbot (запуск песочницы «в любом чате» по упоминанию). Если
-# НЕ задан — создаётся и используется песочница в домашней директории:
+# SANDBOX_ROOT — the absolute path to the directory Claude runs in for @helpbot
+# messages (a sandbox launch "in any chat" by mention). If NOT set — a sandbox
+# is created and used in the home directory:
 #   ~/.claude-tg-bot/sandbox
 SANDBOX_ROOT: Path = Path(
     os.getenv("SANDBOX_ROOT", str(Path.home() / ".claude-tg-bot" / "sandbox"))
 ).resolve()
 
-# SANDBOX_COMMAND — строка-триггер запуска песочницы «в любом чате». Сообщение
-# обязано начинаться с этой строки (после lstrip), дальше пробел + команда/текст.
-# Если не задана или пустая — используется дефолт "@helpbot" (упоминание бота).
-# Реальное значение показывается в /help и других справках (см. format_command_hint).
+# SANDBOX_COMMAND — the trigger string to launch the sandbox "in any chat".
+# A message must start with this string (after lstrip), then a space + command/text.
+# If unset or empty — the default "@helpbot" (a bot mention) is used.
+# The real value is shown in /help and other help texts (see format_command_hint).
 SANDBOX_COMMAND: str = (os.getenv("SANDBOX_COMMAND", "") or "@helpbot").strip()
 
 
 # ---------------------------------------------------------------------------
-# Хранение состояния сессий
+# Session state storage
 # ---------------------------------------------------------------------------
 
-# Файл с состояниями пользователей (активные проекты и т.п.) — в корне проекта.
+# File with user states (active projects etc.) — in the project root.
 STATE_FILE: Path = _PROJECT_ROOT / "state.json"
+
+# Bot message language (see i18n.py). Empty/unknown -> "en".
+BOT_LANG: str = (os.getenv("BOT_LANG") or "").strip()
+
+
+def write_lang_to_config(lang: str) -> bool:
+    """Persist ``BOT_LANG`` into the resolved config.env (if found).
+
+    Rewrites only the ``BOT_LANG=...`` line (or appends it if absent) so the
+    language survives a restart. Returns True on success. Deliberately does
+    not read secrets — only touches the single language key line.
+    """
+    if CONFIG_ENV_PATH is None:
+        return False
+    try:
+        path = CONFIG_ENV_PATH
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+        out = []
+        replaced = False
+        for ln in lines:
+            if ln.lstrip().startswith("BOT_LANG"):
+                out.append(f"BOT_LANG={lang}\n")
+                replaced = True
+            else:
+                out.append(ln)
+        if not replaced:
+            out.append(f"BOT_LANG={lang}\n")
+        path.write_text("".join(out), encoding="utf-8")
+        return True
+    except OSError:
+        return False
 
 
 def validate() -> None:
-    """Проверить обязательные настройки. Бросает RuntimeError с понятным сообщением."""
+    """Validate the mandatory settings. Raises RuntimeError with a clear message."""
     problems = []
     warnings = []
     if CONFIG_ENV_PATH is None:
         problems.append(
-            "config.env не найден ни в одном месте. Положи его в один из каталогов:\n  "
-            + "\n  ".join(str(p) for p in CONFIG_ENV_CANDIDATES)
-            + "\n  (образец: cp config.env.example config.env)"
+            i18n.t("config.cfg_missing", candidates="\n  ".join(str(p) for p in CONFIG_ENV_CANDIDATES))
         )
     if not API_ID:
-        problems.append("API_ID не задан (получите на https://my.telegram.org/apps)")
+        problems.append(i18n.t("config.api_id_missing"))
     if not API_HASH:
-        problems.append("API_HASH не задан (получите на https://my.telegram.org/apps)")
+        problems.append(i18n.t("config.api_hash_missing"))
     if not PHONE:
-        problems.append("PHONE не задан (номер аккаунта Telegram)")
+        problems.append(i18n.t("config.phone_missing"))
     if not os.getenv("PROJECTS_ROOT"):
-        problems.append(
-            "PROJECTS_ROOT не задан — корень проектов, где боту разрешено работать. "
-            "Укажи его в config.env (обязательный параметр)."
-        )
+        problems.append(i18n.t("config.projects_root_missing"))
     if not ALLOWED_USERS:
-        warnings.append("ALLOWED_USERS пуст — бот будет игнорировать всех (закрыт)")
+        warnings.append(i18n.t("config.warn_users"))
     if not ALLOWED_CHAT_IDS:
-        warnings.append(
-            "ALLOWED_CHAT_IDS пуст — бот отвечает только в «Избранном» (Saved Messages), "
-            "а не в группах. Если нужен другой/несколько чатов — впиши id в ALLOWED_CHAT_IDS (см. README)."
-        )
+        warnings.append(i18n.t("config.warn_chats"))
     if problems:
-        raise RuntimeError("Ошибка конфигурации:\n  " + "\n  ".join(problems))
+        raise RuntimeError(i18n.t("config.validation_error", problems="\n  ".join(problems)))
     if warnings:
-        print("⚠️  Предупреждение:\n  " + "\n  ".join(warnings))
+        print(i18n.t("config.warning", warnings="\n  ".join(warnings)))
