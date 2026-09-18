@@ -28,4 +28,4 @@ LIB_CONFIG_ENV="${HOME}/.claude-tg-bot/config.env"
 [ -f "$LIB_CONFIG_ENV" ] || LIB_CONFIG_ENV="$DIR/config.env"
 echo "$(lib_msg setup.sh.launching)"
 echo
-exec "$VENV/bin/python" claude_tg_bot/setup.py
+exec "$VENV/bin/python" -m claude_tg_bot.setup
