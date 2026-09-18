@@ -1,267 +1,266 @@
 # claude-tg-bot
 
-Telegram-бот для управления **Claude**.
+**English** · [Русский](README.ru.md)
 
-Бот работает как **userbot на MTProto-клиенте по MTProto-протоколу** через
-**MTProto-прокси** (`tg://proxy?...`), поэтому **не требует доступа к
-`api.telegram.org` (Bot API)**. Это позволяет запускать бота там, где Bot API
-заблокирован, а MTProto-прокси — рабочий канал.
+A Telegram bot for managing **Claude**.
 
-Взаимодействие с моделью идёт через **командную строку Claude**. Конкретная
-команда настраивается в `config.env` (`CLAUDE_COMMAND`): подходит обычный
-`claude`, а также любая обёртка — собственная или сторонняя. Специфичные для
-обёртки флаги передаются через `COMMAND_ARGS`.
+The bot runs as a **userbot on an MTProto client over the MTProto protocol** via
+an **MTProto proxy** (`tg://proxy?...`), so it **requires no access to
+`api.telegram.org` (Bot API)**. This lets you run the bot where the Bot API is
+blocked but an MTProto proxy is a working channel.
 
-## Как это работает
+Interaction with the model goes through the **Claude command line**. The exact
+command is configured in `config.env` (`CLAUDE_COMMAND`): the standard `claude`
+works, as does any wrapper — your own or a third-party one. Wrapper-specific
+flags are passed via `COMMAND_ARGS`.
+
+## How it works
 
 ```
-Telegram-аккаунт  (userbot)
-     │  MTProto-клиент [через MT_PROXY, если задан]
+Telegram account  (userbot)
+     │  MTProto client [via MT_PROXY, if set]
      ▼
- claude_tg_bot/  — пакет: хендлеры (handlers), команды (commands), вложения (media),
-                    статус (status), запуск Claude (runner), сессии (sessions)
+ claude_tg_bot/  — package: handlers (handlers), commands (commands), media (media),
+                    status (status), Claude launcher (runner), sessions (sessions)
      ▼
  runner.py — subprocess: <CLAUDE_COMMAND> -p "..." --output-format stream-json
      ▼
- результат парсится и уходит обратно в Telegram
+ the result is parsed and sent back to Telegram
 ```
 
-- **Контекст** — бот находит последнюю сессию каталога и продолжает её через
-  `--resume <id>` (надёжнее `--continue`: интерактивный `claude -c` не подхватывает
-  сессии, созданные через `-p`). Если сессии нет — запускается новая. Текущий
-  `session_id` виден в `/status` — его можно использовать локально:
-  `claude --resume <id>` продолжит ту же сессию.
-- **Единый формат ответов** — каждое сообщение от бота начинается с «головы
-  робота» `🤖` и пробела, затем сам текст (`🤖 ...`). Так любые ответы бота
-  (результат Claude, `/status`, `/help`, индикатор «Думаю...») визуально
-  отделяются от обычных сообщений в чате.
+- **Context** — the bot finds the latest session of the directory and continues
+  it via `--resume <id>` (more reliable than `--continue`: interactive `claude -c`
+  doesn't pick up sessions created via `-p`). If there's no session — a new one is
+  started. The current `session_id` is visible in `/status` and can be used
+  locally: `claude --resume <id>` continues the same session.
+- **Uniform answer format** — every bot message starts with the «robot head»
+  `🤖` and a space, then the text itself (`🤖 ...`). This visually separates any
+  bot reply (Claude result, `/status`, `/help`, the "Thinking..." indicator)
+  from ordinary messages in the chat.
 
-## Установка и настройка
+## Install and setup
 
-Ничего устанавливать вручную не нужно — всё делают готовые скрипты, которые
-при необходимости сами поднимут Python и поставят зависимости:
+Nothing needs to be installed manually — ready-made scripts do it all, setting
+up Python and installing dependencies if needed:
 
 ```bash
 cd claude-tg-bot
 
-bash setup.sh          # настройка: спросит параметры и создаст config.env
-bash claude-tg-bot.sh  # запуск бота (сам создаст venv и поставит зависимости)
+bash setup.sh          # setup: prompt for parameters and create config.env
+bash claude-tg-bot.sh  # launch the bot (creates venv and installs dependencies itself)
 ```
 
-`setup.sh` — интерактивная настройка: спрашивает параметры по группам
-(обязательные и необязательные) и создаёт `~/.claude-tg-bot/config.env`.
-Если файл уже есть — редактирует его (делает копию `config.env.bak` и
-показывает текущие значения; Enter — оставить, ввод нового — заменить).
+`setup.sh` — interactive setup: it asks parameters by groups (mandatory and
+optional) and creates `~/.claude-tg-bot/config.env`. If the file already exists
+it edits it (makes a `config.env.bak` copy and shows the current values;
+Enter — keep, a new value — replace).
 
-`claude-tg-bot.sh` — запуск: сам создаёт виртуальное окружение (`venv`),
-ставит зависимости из `requirements.txt` и запускает бота. Оба скрипта
-выбирают подходящий Python (≥3.10) и готовят окружение автоматически через
-общий модуль `lib/env.sh` — вручную ничего запускать не нужно.
+`claude-tg-bot.sh` — launch: it creates the virtual environment (`venv`),
+installs the dependencies from `requirements.txt` and runs the bot. Both scripts
+pick a suitable Python (≥3.10) and prepare the environment automatically via the
+shared module `lib/env.sh` — nothing needs to be run manually.
 
-## Настройка `config.env`
+## Configuring `config.env`
 
-`config.env` ищется в **двух местах** (по приоритету):
+`config.env` is looked up in **two places** (by priority):
 
-1. `~/.claude-tg-bot/config.env` — каталог, где лежит папка `sandbox`;
-2. `<каталог claude-tg-bot.sh>/config.env` — рядом со скриптом запуска.
+1. `~/.claude-tg-bot/config.env` — the directory that holds the `sandbox` folder;
+2. `<claude-tg-bot.sh directory>/config.env` — next to the launch script.
 
-**Файл обязателен.** Если его нет ни в одном из двух мест — бот завершает
-работу при старте (падает с сообщением, куда положить `config.env`), а
-`claude-tg-bot.sh` сообщает об этом и выходит. Без секретов
-(`API_ID`/`API_HASH`/`PHONE`) бот тоже не запустится — `validate()` сообщит
-об этом.
+**The file is mandatory.** If it's absent in both places the bot exits at startup
+(crashes with a message saying where to put `config.env`), and
+`claude-tg-bot.sh` reports this and exits. Without the secrets
+(`API_ID`/`API_HASH`/`PHONE`) the bot won't start either — `validate()` reports
+it.
 
-Обязательные значения:
-- `API_ID`, `API_HASH` — с https://my.telegram.org/apps
-- `PHONE` — номер Telegram-аккаунта
-- `ALLOWED_USERS` — Telegram user_id (см. ниже)
-- `ALLOWED_CHAT_IDS` — id чата, в котором бот отвечает (см. ниже)
-- `PROJECTS_ROOT` — корень проектов, где боту разрешено работать (см. ниже)
+Mandatory values:
+- `API_ID`, `API_HASH` — from https://my.telegram.org/apps
+- `PHONE` — the Telegram account number
+- `ALLOWED_USERS` — Telegram user_id (see below)
+- `ALLOWED_CHAT_IDS` — the id of the chat where the bot answers (see below)
+- `PROJECTS_ROOT` — the projects root where the bot is allowed to work (see below)
 
-Необязательные:
-- `MT_PROXY` — строка `tg://proxy?...`. Если **не задана** — бот подключается
-  к Telegram **напрямую, без прокси**. Прокси нужен только если прямой доступ
-  недоступен (например, заблокирован `api.telegram.org`).
-- `CLAUDE_COMMAND` — команда для запуска Claude. По умолчанию `claude`.
-  Можно указать другую обёртку.
-- `COMMAND_ARGS` — дополнительные аргументы командной строки, добавляемые к
-  `CLAUDE_COMMAND`. Задаются одной строкой и разбиваются на отдельные
-  аргументы. Например, для Cline-обёртки: `--provider openai-compatible`.
-  Для обычного `claude` обычно не требуется и оставляется пустым.
-- `COMMAND_ARGS_ALTERNATIVE` — альтернативный набор аргументов для **смены
-  модели**, если основная недоступна (ответ `API Error` / `Cannot connect` /
-  `502`/`503`). Подставляется **вместо** `COMMAND_ARGS` при повторе запроса —
-  обычно указывает другого провайдера/модель. Бот чередует базовый и
-  альтернативный наборы до цепочки `RETRY_LIMIT`, с растущей паузой. Если
-  пусто — запрос повторяется базовыми аргументами без смены модели. При
-  переключении на запасной набор бот уведомляет об этом в Telegram (один раз
-  при переходе и один раз, когда запасная модель ответила).
-- `CLAUDE_PERMISSION_MODE` — режим разрешений (`--permission-mode`) для запуска
-  Claude. По умолчанию `bypassPermissions` (полный авто, иначе Claude спросит
-  «Что разрешаешь?» и зависнет). Можно сменить на `acceptEdits` (авто для
-  правок файлов) для осторожности.
-- `CLAUDE_SYSTEM_PROMPT` — системный промпт для Claude, передаётся через
-  `--append-system-prompt`. Если задан — добавляется к каждому вызову Claude;
-  если пусто — флаг не передаётся и Claude работает со своим стандартным
-  системным промптом.
-- `SANDBOX_COMMAND` — строка-триггер запуска песочницы «в любом чате»: сообщение
-  обязано начинаться с неё, дальше пробел и команда/текст (см. ниже). Если не
-  задана или пустая — используется `@helpbot` (упоминание бота). Значение
-  показывается в `/help` и справках.
-- `SANDBOX_ROOT` — каталог (песочница), где запускается песочница для сообщений
-  `SANDBOX_COMMAND`. Если не задан — используется песочница
-  `~/.claude-tg-bot/sandbox`.
-- `AUTO_DELETE_MEDIA` — автоудалять ли вложение после отправки в Claude.
-  `true` — удалять, `false` (по умолчанию) — не удалять, очищать только
-  вручную: командой `/clearmedia`, или автоматически при `/clear` (см. ниже).
-- `DELETE_MODE` — куда удалять: `trash` (в корзину macOS, по умолчанию) или
-  `permanent` (навсегда). Работает и для `/clearmedia` (в т.ч. при автовызове
-  из `/clear`), и при автоудалении.
-- `RETRY_LIMIT` — сколько повторов (включая первую попытку) делается при сбое
-  подключения к Telegram, отправке сообщения или вызове Claude, прежде чем
-  сдаться. По умолчанию `5`.
-- `RETRY_BASE_DELAY` / `RETRY_MAX_DELAY` / `RETRY_MULTIPLIER` — единая схема
-  паузы между повторами: стартовая пауза (сек), потолок (сек, по умолчанию
-  300 = 5 мин) и множитель роста. Пауза после n-й неудачи —
-  `base * multiplier^(n-1)` до потолка.
-- `MESSAGE_RETRY_LIMIT` / `MESSAGE_RETRY_DELAY` — число повторов и пауза (сек)
-  для отправки сообщений/индикаторов в Telegram (транзиентные меж-DC ошибки —
-  короткие паузы, а не те же минуты, что у подключения).
+Optional:
+- `MT_PROXY` — a `tg://proxy?...` string. If **not set** — the bot connects to
+  Telegram **directly, without a proxy**. A proxy is needed only if direct access
+  is unavailable (e.g. `api.telegram.org` is blocked).
+- `CLAUDE_COMMAND` — the command that launches Claude. Default `claude`.
+  You can specify another wrapper.
+- `COMMAND_ARGS` — additional command-line arguments appended to
+  `CLAUDE_COMMAND`. Specified as one string and split into individual arguments.
+  For example, for a Cline wrapper: `--provider openai-compatible`. For plain
+  `claude` it's usually not needed and left empty.
+- `COMMAND_ARGS_ALTERNATIVE` — an alternative argument set for a **model switch**
+  when the main model is unavailable (an `API Error` / `Cannot connect` /
+  `502`/`503` answer). It's substituted **instead of** `COMMAND_ARGS` when
+  retrying — usually pointing at a different provider/model. The bot alternates
+  the base and alternative sets up to a `RETRY_LIMIT` chain, with a growing
+  pause. If empty — the request retries with the base arguments without changing
+  the model. On switching to the fallback set the bot notifies the user in
+  Telegram (once on the switch and once when the fallback model answered).
+- `CLAUDE_PERMISSION_MODE` — the permission mode (`--permission-mode`) for
+  launching Claude. Default `bypassPermissions` (full auto, otherwise Claude asks
+  "What do you allow?" and hangs). Can be changed to `acceptEdits` (auto for file
+  edits) for caution.
+- `CLAUDE_SYSTEM_PROMPT` — the system prompt for Claude, passed via
+  `--append-system-prompt`. If set — it's appended to every Claude call; if
+  empty — the flag is not passed and Claude uses its own standard system prompt.
+- `SANDBOX_COMMAND` — the trigger string for launching the sandbox "in any chat":
+  a message must start with it, then a space and a command/text (see below). If
+  unset or empty — `@helpbot` is used (the bot mention). The value is shown in
+  `/help` and the help texts.
+- `SANDBOX_ROOT` — the directory (sandbox) where sandboxing runs for
+  `SANDBOX_COMMAND` messages. If unset — the `~/.claude-tg-bot/sandbox` sandbox
+  is used.
+- `AUTO_DELETE_MEDIA` — whether to auto-delete an attachment after sending it to
+  Claude. `true` — delete, `false` (default) — don't delete, clean only manually:
+  via `/clearmedia`, or automatically on `/clear` (see below).
+- `DELETE_MODE` — where to delete: `trash` (macOS Trash, default) or
+  `permanent` (forever). Works both for `/clearmedia` (incl. when auto-called
+  from `/clear`) and for auto-deletion.
+- `RETRY_LIMIT` — how many retries (including the first attempt) are made on a
+  Telegram connection failure, message send, or Claude call before giving up.
+  Default `5`.
+- `RETRY_BASE_DELAY` / `RETRY_MAX_DELAY` / `RETRY_MULTIPLIER` — the shared pause
+  scheme between retries: start pause (sec), cap (sec, default 300 = 5 min) and
+  growth multiplier. Pause after the n-th failure —
+  `base * multiplier^(n-1)` up to the cap.
+- `MESSAGE_RETRY_LIMIT` / `MESSAGE_RETRY_DELAY` — retry count and pause (sec)
+  for sending messages/indicators to Telegram (transient inter-DC errors — short
+  pauses, not the minutes used for the connection).
 
-## Как узнать свой user_id и id чата
+## How to find your user_id and chat id
 
-Бот работает под аккаунтом и отвечает **только в заданном чате**. Для этого два поля:
+The bot runs under an account and answers **only in a configured chat**. For that, two fields:
 
-### `ALLOWED_USERS` — user_id (кто может обращаться)
+### `ALLOWED_USERS` — user_id (who may reach out)
 
-Отправьте боту **@userinfobot** любое сообщение — он ответит полем `Id:`.
-Это и есть ваш `user_id` (например `123456789`).
+Send the bot **@userinfobot** any message — it replies with the `Id:` field.
+That is your `user_id` (e.g. `123456789`).
 
-### `ALLOWED_CHAT_IDS` — id чата (где бот отвечает)
+### `ALLOWED_CHAT_IDS` — chat id (where the bot answers)
 
-Если работаете в **«Избранном»** (Saved Messages) — `chat_id` совпадает с
-`user_id`, просто впишите тот же id.
+If you work in **Saved Messages** — the `chat_id` equals the `user_id`, just enter
+the same id.
 
-Если это **группа/канал** — важен префикс `-100`:
-- @userinfobot показывает id обычной группы **без** `-100` (например `-1234567890`) — вписывайте как есть.
-- У **супергруппы/канала** добавляйте префикс `-100` (`-1001234567890`).
+If it's a **group/channel** — the `-100` prefix matters:
+- @userinfobot shows a regular group's id **without** `-100` (e.g. `-1234567890`) — enter as is.
+- For a **supergroup/channel** add the `-100` prefix (`-1001234567890`).
 
-Формат: несколько id — **через запятую в одних кавычках** (кавычки вокруг
-каждого id отдельно python-dotenv не парсит). Отрицательный `chat_id` — тоже в кавычках.
+Format: several ids — **comma-separated inside one pair of quotes** (python-dotenv
+doesn't parse quotes around each id separately). A negative `chat_id` — also in quotes.
 ```
 ALLOWED_USERS="123456789"
 ALLOWED_CHAT_IDS="-1001234567890"
-ALLOWED_CHAT_IDS="-1001234567890,-1009876543210"   # несколько — в одних кавычках
+ALLOWED_CHAT_IDS="-1001234567890,-1009876543210"   # several — in one pair of quotes
 ```
 
-### Поведение
+### Behavior
 
-- `ALLOWED_CHAT_IDS` **пуст** → бот отвечает только в «Избранном».
-- `ALLOWED_CHAT_IDS` заполнен → бот отвечает **только** в перечисленных чатах,
-  и нигде больше.
+- `ALLOWED_CHAT_IDS` **empty** → the bot answers only in Saved Messages.
+- `ALLOWED_CHAT_IDS` filled → the bot answers **only** in the listed chats, and nowhere else.
 
-## Запуск
+## Launch
 
 ```bash
-bash claude-tg-bot.sh    # из директории проекта
+bash claude-tg-bot.sh    # from the project directory
 ```
 
-Скрипт сам создаёт `.venv`, ставит зависимости (если их нет), проверяет
-`config.env` и запускает бота. Вручную Python запускать не нужно. Если в
-`config.env` включён `KEEP_AWAKE=true`, скрипт держит макбук бодрствующим
-(`caffeinate -dimsu`), чтобы при засыпании не отключалась сеть и бот не
-переставал принимать/отвечать на сообщения.
+The script creates `.venv`, installs the dependencies (if absent), checks
+`config.env` and runs the bot. No manual Python launch needed. If `KEEP_AWAKE=true`
+is set in `config.env`, the script keeps the laptop awake (`caffeinate -dimsu`)
+so sleep doesn't drop the network and the bot keeps receiving/answering messages.
 
-**Логирование** включается флагом `--log[=уровень]` при запуске (по умолчанию
-выключено; без значения — только ошибки):
+**Logging** is enabled by the `--log[=level]` flag at launch (default off;
+without a value — only errors):
 
 ```bash
-bash claude-tg-bot.sh --log          # только ERROR
-bash claude-tg-bot.sh --log=info     # INFO + ошибки (запуск, команды, id сессии)
-bash claude-tg-bot.sh --log=debug    # всё, включая отладочное
+bash claude-tg-bot.sh --log          # only ERROR
+bash claude-tg-bot.sh --log=info     # INFO + errors (launch, commands, session id)
+bash claude-tg-bot.sh --log=debug    # everything, incl. debug
 ```
 
-Логи пишутся в `~/.claude-tg-bot/logs/claude-tg-bot-<дата>.log`. При
-интерактивном запуске без `--log`, но с уже существующими логами — бот
-предлагает их удалить (по умолчанию — не удалять).
+Logs are written to `~/.claude-tg-bot/logs/claude-tg-bot-<date>.log`. On an
+interactive launch without `--log`, but with existing logs — the bot offers to
+delete them (default — don't delete).
 
-При первом входе MTProto-клиент запросит код подтверждения (придёт в Telegram)
-и один раз пароль двухфакторки, если она включена. После этого создастся
-`claude-tg-bot.session` — повторный запуск вход не запрашивает.
+On the first login the MTProto client requests a confirmation code (arrives in
+Telegram) and once the 2FA password, if enabled. After that a
+`claude-tg-bot.session` is created — a repeat launch doesn't ask to log in.
 
-## Статус в консоли
+## Console status
 
-В консоли бот держит блок статуса: `🟢 Работаю` в норме, либо `❌ Ошибка: <текст>`
-при сбое (связь с Telegram или отвал модели). Обе строки видны вместе, у каждой —
-дата и время; иконка `🟢`/`❌` ставится только у актуального состояния. Блок
-перерисовывается на месте и не дублирует сообщения без изменений.
+In the console the bot keeps a status block: `🟢 Working` normally, or
+`❌ Error: <text>` on a failure (Telegram link or model drop). Both lines are
+visible together, each with a date and time; the `🟢`/`❌` icon is set only on the
+up-to-date state. The block redraws in place and doesn't duplicate messages
+without changes.
 
-## Команды
+## Commands
 
-| Команда | Что делает |
+| Command | What it does |
 |---|---|
-| `/start` `/help` | Приветствие + справка |
-| `/list` | Список проектов (подпапок `PROJECTS_ROOT`) |
-| `/switch <имя>` | Переключиться на существующий проект |
-| `/new <имя>` | Создать и активировать проект |
-| `/status` | Текущий проект / путь / сессия / счётчик активных задач |
-| `/kill` | Убить зависшие процессы Claude, запущенные этим ботом |
-| `/clear` | Сначала **автоматически** вызывает `/clearmedia` (очистка вложений), затем сбрасывает контекст в Claude (начать новую сессию) |
-| `/clearmedia` | Удалить скачанные вложения текущего проекта (по `DELETE_MODE`) |
-| `/mediasize` | Показать количество и объём скачанных вложений текущего проекта |
-| `@helpbot <команда/текст>` | Работа в `SANDBOX_ROOT` в любом чате (см. ниже) |
+| `/start` `/help` | Greeting + help |
+| `/list` | List of projects (subfolders of `PROJECTS_ROOT`) |
+| `/switch <name>` | Switch to an existing project |
+| `/new <name>` | Create and activate a project |
+| `/status` | Current project / path / session / active-task counter |
+| `/kill` | Kill stuck Claude processes launched by this bot |
+| `/clear` | First **automatically** calls `/clearmedia` (attachment cleanup), then resets the Claude context (start a new session) |
+| `/clearmedia` | Delete the current project's downloaded attachments (per `DELETE_MODE`) |
+| `/mediasize` | Show the count and size of the current project's downloaded attachments |
+| `@helpbot <command/text>` | Work in `SANDBOX_ROOT` in any chat (see below) |
 
-Просто сообщение в чате → запускает Claude в активном проекте.
-Вложение → скачивается и отправляется в Claude с подписью-промптом (или без
-неё). Каждый тип — отдельный обработчик (`on_photo` / `on_video` /
-`on_video_note` / `on_audio` / `on_document` / `on_sticker`), расширение
-файла подбирается под тип (для фото — по содержимому, для остальных — по
-имени/mime). Видеосообщение-кружок (`video_note`) обрабатывается как видео,
-стикер — как изображение. Опрос/геопозиция/контакт (нет файла, но есть
-данные) передаются в Claude текстовым описанием. Если тип вложения совсем
-не распознан — бот отвечает «Не могу обработать: <тип>».
+A plain message in the chat → launches Claude in the active project.
+An attachment → is downloaded and sent to Claude with a caption-prompt (or without
+it). Each type — a separate handler (`on_photo` / `on_video` / `on_video_note` /
+`on_audio` / `on_document` / `on_sticker`), the file extension matched to the
+type (for photos — by content, for the rest — by name/mime). A video-note
+(`video_note`) is treated as a video, a sticker — as an image. A poll/geo/contact
+(no file, but there is data) is passed to Claude as a textual description. If the
+attachment type isn't recognized at all — the bot replies "Can't process: <type>".
 
-## Запуск песочницы в любом чате (`@helpbot`)
+## Running the sandbox in any chat (`@helpbot`)
 
-Помимо активного проекта, бот умеет запускать песочницу **в любом чате**, где он
-является участником, по упоминанию `@helpbot`. Это удобно в группах/каналах,
-где держать отдельный проект не нужно.
+Besides the active project, the bot can run a sandbox **in any chat** it is a
+member of, by mentioning `@helpbot`. That's convenient in groups/channels where
+you don't want a separate project.
 
-Как это работает:
-- Сообщение обязано **начинаться** с упоминания `@helpbot`, дальше пробел и
-  команда/текст (с вложением или без). Из него срезаются `@helpbot` и все
-  пробелы после него; остаток обрабатывается **как обычное сообщение бота**, но
-  в песочном контексте (корень `SANDBOX_ROOT`, отдельный выбор проекта). Примеры:
-  - `@helpbot проверить README на ошибки` → Claude в каталоге песочницы
-  - `@helpbot /status` → статус бота, но про `SANDBOX_ROOT`
-  - `@helpbot /list` → список каталогов в `SANDBOX_ROOT`
-  - `@helpbot /new foo` → создать каталог `SANDBOX_ROOT/foo` и активировать его
-  - `@helpbot /switch foo` → переключиться на каталог `SANDBOX_ROOT/foo`
-  - `@helpbot /clear` → сначала автоматически вызывает `/clearmedia` (очистка вложений песочницы), затем сбрасывает контекст в Claude
-  - `@helpbot` + фото/видео/файл → Claude с вложением
-- Отправитель обязан быть в `ALLOWED_USERS`. Ограничение на чат
-  (`ALLOWED_CHAT_IDS`) для `@helpbot` **не применяется** — песочницу можно вызвать
-  из любого чата, где бот есть.
-- Если после среза `@helpbot` и пробелов осталась пустая строка **и** нет
-  вложения — сообщение молча игнорируется.
-- **Раздельное состояние**: `@helpbot`-проекты (`SANDBOX_ROOT/...`) хранятся
-  отдельно от обычных (`PROJECTS_ROOT/...`). Команды `/switch`/`/new` внутри
-  `@helpbot` меняют только проект песочницы и не трогают обычный, и наоборот.
-  Сессия Claude привязана к конкретному каталогу, поэтому обе ветки можно
-  вести параллельно, контекст не пересекается.
-- Песочница запускается в каталоге `SANDBOX_ROOT` (или песочнице по умолчанию
-  `~/.claude-tg-bot/sandbox`), независимо от активного проекта пользователя.
-  Если проект песочницы не выбран — работает прямо в корне `SANDBOX_ROOT`.
+How it works:
+- A message must **start** with the `@helpbot` mention, then a space and a
+  command/text (with an attachment or not). From it, `@helpbot` and all spaces
+  after it are stripped; the remainder is processed **like a regular bot message**,
+  but in a sandboxed context (root `SANDBOX_ROOT`, a separate project choice). Examples:
+  - `@helpbot check README for errors` → Claude in the sandbox directory
+  - `@helpbot /status` → the bot status, but about `SANDBOX_ROOT`
+  - `@helpbot /list` → the list of `SANDBOX_ROOT` directories
+  - `@helpbot /new foo` → create a `SANDBOX_ROOT/foo` directory and activate it
+  - `@helpbot /switch foo` → switch to the `SANDBOX_ROOT/foo` directory
+  - `@helpbot /clear` → first automatically calls `/clearmedia` (sandbox attachment cleanup), then resets the Claude context
+  - `@helpbot` + photo/video/file → Claude with an attachment
+- The sender must be in `ALLOWED_USERS`. The chat restriction
+  (`ALLOWED_CHAT_IDS`) is **not applied** to `@helpbot` — the sandbox can be
+  invoked from any chat the bot is in.
+- If after stripping `@helpbot` and the spaces an empty string remains **and**
+  there's no attachment — the message is silently ignored.
+- **Separate state**: `@helpbot` projects (`SANDBOX_ROOT/...`) are stored
+  separately from regular ones (`PROJECTS_ROOT/...`). The `/switch`/`/new`
+  commands inside `@helpbot` change only the sandbox project and don't touch the
+  regular one, and vice versa. The Claude session is bound to a specific
+  directory, so both branches can run in parallel without overlapping context.
+- The sandbox runs in the `SANDBOX_ROOT` directory (or the default sandbox
+  `~/.claude-tg-bot/sandbox`), regardless of the user's active project. If no
+  sandbox project is selected — it works right in the `SANDBOX_ROOT` root.
 
-## Ограничения
+## Limitations
 
-- Работает в режиме `-p` (один проход, печать) — без интерактивного TUI.
-  Правки кода выполняются как «запрос-ответ», а не пошагово в живом терминале.
-- Permission-режим задаётся глобально через `CLAUDE_PERMISSION_MODE`
-  (по умолчанию `bypassPermissions` — полный авто). Переключать режим «на лету»
-  командой из чата нельзя — это настройка запуска.
-- `workers=1` — MTProto-клиент обрабатывает сообщения последовательно. Фоновые
-  вызовы Claude при этом выполняются конкурентно, но хендлеры не параллелятся,
-  поэтому длинная задача может задержать обработку следующего сообщения.
-- Набор инструментов и модель определяются настройками выбранного Claude
-  (`CLAUDE_COMMAND` / `COMMAND_ARGS`), а не ботом.
+- Works in `-p` mode (a single pass, print) — without an interactive TUI.
+  Code edits are performed "request-response", not step-by-step in a live terminal.
+- The permission mode is set globally via `CLAUDE_PERMISSION_MODE`
+  (default `bypassPermissions` — full auto). You can't switch the mode "on the fly"
+  from a chat command — it's a launch setting.
+- `workers=1` — the MTProto client processes messages sequentially. Background
+  Claude calls run concurrently, but the handlers don't parallelize, so a long
+  task may delay the next message.
+- The tool set and model are determined by the chosen Claude's settings
+  (`CLAUDE_COMMAND` / `COMMAND_ARGS`), not by the bot.
