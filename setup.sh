@@ -1,15 +1,16 @@
 #!/bin/bash
 # ================================================================
-# setup.sh — интерактивная настройка claude-tg-bot.
+# setup.sh — interactive setup for claude-tg-bot.
 #
-# Спрашивает настройки по группам и создаёт/редактирует config.env
-# в ~/.claude-tg-bot/. Если файл уже есть — делает копию config.env.bak
-# и меняет только те значения, которые пользователь ввёл заново
-# (Enter — оставить текущее).
+# Asks for settings by groups and creates/edits config.env in
+# ~/.claude-tg-bot/. If the file already exists — makes a config.env.bak
+# copy and changes only the values entered again
+# (Enter — keep the current value).
 #
-# Окружение (Python + venv + зависимости) готовит общий модуль lib/env.sh.
+# The environment (Python + venv + dependencies) is prepared by the shared
+# module lib/env.sh.
 #
-# Использование:
+# Usage:
 #   bash setup.sh
 # ================================================================
 set -euo pipefail
@@ -17,12 +18,12 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
-# --- 0. Подготовка окружения (Python + venv + зависимости) ------------------
-# Так же, как в claude-tg-bot.sh — через общий модуль lib/env.sh.
+# --- 0. Prepare the environment (Python + venv + deps) ----------------------
+# Same as in claude-tg-bot.sh — via the shared module lib/env.sh.
 source "$DIR/lib/env.sh"
 setup_env
 
-# Язык общих консольных сообщений — из config.env (см. lib/lib_msg).
+# Language of the shared console messages — from config.env (see lib/lib_msg).
 LIB_CONFIG_ENV="${HOME}/.claude-tg-bot/config.env"
 [ -f "$LIB_CONFIG_ENV" ] || LIB_CONFIG_ENV="$DIR/config.env"
 echo "$(lib_msg setup.sh.launching)"

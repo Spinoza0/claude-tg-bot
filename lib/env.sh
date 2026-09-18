@@ -1,24 +1,25 @@
 # ================================================================
-# lib/env.sh — общая подготовка окружения для bash-скриптов проекта.
+# lib/env.sh — shared environment setup for the project's bash scripts.
 #
-# Подключается через `source lib/env.sh` из claude-tg-bot.sh и setup.sh.
-# Устанавливает PROJECT_DIR (корень репозитория), VENV, и функцию
-# setup_env(), которая выбирает подходящий Python (>=3.10), создаёт
-# venv и ставит зависимости из requirements.txt (если их нет).
+# Sourced via `source lib/env.sh` from claude-tg-bot.sh and setup.sh.
+# Sets PROJECT_DIR (repo root), VENV, and the setup_env() function, which
+# picks a suitable Python (>=3.10), creates a venv and installs the
+# dependencies from requirements.txt (if missing).
 #
-# Не применяет `set -euo pipefail` сам — наследует настройки вызывающего,
-# чтобы не менять его поведение.
+# Does not apply `set -euo pipefail` itself — it inherits the caller's settings
+# so as not to change the caller's behavior.
 # ================================================================
 
-# Корень проекта — каталог, где лежат lib/ и claude-tg-bot.sh.
+# The project root — the directory holding lib/ and claude-tg-bot.sh.
 PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 VENV="$PROJECT_DIR/.venv"
 
-# --- Локализация (общий языковой файл, как в claude_tg_bot/i18n.py) --------
-# Строки консоли берём из claude_tg_bot/locale/<lang>.json через python3, чтобы
-# bash и Python читали ОДИН источник. Язык — из BOT_LANG в config.env (дефолт en).
+# --- Localization (shared locale file, as in claude_tg_bot/i18n.py) ---------
+# Console strings come from claude_tg_bot/locale/<lang>.json via python3, so that
+# bash and Python read ONE source. The language comes from BOT_LANG in config.env
+# (default en).
 
-# Выбрать язык: BOT_LANG из переданного конфига или из стандартных мест.
+# Pick the language: BOT_LANG from the passed config or from the standard places.
 lib_lang() {
     local lang="" cfg
     for cfg in "${LIB_CONFIG_ENV:-}" "$HOME/.claude-tg-bot/config.env" "$PROJECT_DIR/config.env"; do
@@ -29,7 +30,7 @@ lib_lang() {
     printf '%s' "${lang:-en}"
 }
 
-# Достать строку по ключу из locale/<lang>.json; фолбэк на en; пусто, если нет.
+# Get a string by key from locale/<lang>.json; fall back to en; empty if absent.
 lib_msg() {
     local key="${1:-}" lang py base
     [ -n "$key" ] || return 0
@@ -54,12 +55,12 @@ print(table.get(key, ''))
 PY
 }
 
-# --- Выбор подходящего Python (>=3.10) -------------------------------------
-# Боту и kurigram нужен Python 3.10+. Системный python3 бывает старее,
-# поэтому перебираем известные бинарники и берём первый с версией >=3.10.
+# --- Pick a suitable Python (>=3.10) ----------------------------------------
+# The bot and kurigram need Python 3.10+. The system python3 can be older, so
+# we iterate the known binaries and take the first one with a version >=3.10.
 pick_python() {
     local candidates py ver
-    # Если PYTHON задан — только он (но проверим версию ниже).
+    # If PYTHON is set — use only it (but we still check the version below).
     if [ -n "${PYTHON:-}" ]; then
         candidates="$PYTHON"
     else
@@ -76,23 +77,24 @@ pick_python() {
     return 1
 }
 
-# Существующий venv подходит, если его python >=3.10.
+# An existing venv is usable if its python is >=3.10.
 venv_ok() {
     local v
     v="$("$VENV/bin/python" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)" || return 1
     [ "$(printf '%s\n%s\n' "3.10" "$v" | sort -V | head -n1)" = "3.10" ]
 }
 
-# Существуют ли установленные зависимости бота.
+# Whether the bot's dependencies are installed.
 _deps_ok() {
-    # Модуль называется python_socks (пакет python-socks), НЕ socks (PySocks):
-    # kurigram зависит от python-socks, а PySocks может не стоять — проверяем
-    # именно python_socks, иначе проверка падает каждый раз и ставит зависимости вновь.
+    # The module is python_socks (package python-socks), NOT socks (PySocks):
+    # kurigram depends on python-socks, while PySocks may be absent — we check
+    # python_socks specifically, otherwise the check fails every time and
+    # reinstalls the dependencies.
     "$VENV/bin/python" -c "import pyrogram, python_socks, dotenv" >/dev/null 2>&1
 }
 
-# setup_env — полная подготовка: найти Python, создать/пересоздать venv,
-# поставить зависимости. Печатает понятные сообщения о каждом шаге.
+# setup_env — full preparation: find Python, create/recreate the venv, install
+# the dependencies. Prints a clear message about each step.
 setup_env() {
     PYTHON="$(pick_python || true)"
     if [ -z "$PYTHON" ]; then
@@ -102,7 +104,7 @@ setup_env() {
     fi
     echo "$(lib_msg env.sh.python)" | sed "s|{py}|$PYTHON|; s|{ver}|$("$PYTHON" -c 'import sys; print(".".join(map(str,sys.version_info[:3])))')|"
 
-    # Пересоздаём venv, если он собран старым Python.
+    # Recreate the venv if it was built with an older Python.
     if [ -d "$VENV" ] && ! venv_ok; then
         echo "$(lib_msg env.sh.rebuild_venv)" | sed "s|{old}|$("$VENV/bin/python" --version 2>&1)|; s|{py}|$PYTHON|"
         rm -rf "$VENV"

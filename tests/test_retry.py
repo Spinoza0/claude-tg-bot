@@ -1,9 +1,9 @@
-"""Юнит-тесты единого механизма повторов (_run_with_retry, _retry_backoff_delay,
-_start_with_retry).
+"""Unit tests for the unified retry mechanism (_run_with_retry,
+_retry_backoff_delay, _start_with_retry).
 
-Проверяем: растущую паузу (1 → 5 мин по issue #6), потолок 5 мин, сброс к base
-при успехе, ограничение числа попыток RETRY_LIMIT и прерывание по Ctrl+C
-(KeyboardInterrupt не глушится).
+We check: the growing pause (1 → 5 min per issue #6), the 5-min cap, resetting to
+base on success, the RETRY_LIMIT attempt limit, and Ctrl+C interruption
+(KeyboardInterrupt isn't swallowed).
 """
 
 import asyncio
@@ -19,7 +19,7 @@ from claude_tg_bot import client, retry  # noqa: E402
 
 
 class _FakeApp:
-    """app.start(): сначала fails раз бросает сетевую ошибку, потом успех."""
+    """app.start(): fails `fails` times with a network error, then succeeds."""
 
     def __init__(self, fails):
         self.fails = fails
@@ -33,11 +33,10 @@ class _FakeApp:
 
 
 class TestBackoffDelay(unittest.TestCase):
-    """_retry_backoff_delay: рост с потолком 5 мин (issue #6)."""
+    """_retry_backoff_delay: growth with a 5-min cap (issue #6)."""
 
     def test_growth_and_cap(self):
         d = retry._retry_backoff_delay
-        # 60, 120, 240, 480->300 (потолок), 960->300 ...
         self.assertEqual(d(1), 60)
         self.assertEqual(d(2), 120)
         self.assertEqual(d(3), 240)
@@ -47,7 +46,7 @@ class TestBackoffDelay(unittest.TestCase):
 
 
 class TestRunWithRetry(unittest.TestCase):
-    """_run_with_retry: ограничение попыток и результат при успехе."""
+    """_run_with_retry: attempt limit and the result on success."""
 
     def setUp(self):
         self._orig = retry.asyncio.sleep
@@ -66,7 +65,6 @@ class TestRunWithRetry(unittest.TestCase):
             raise RuntimeError("boom")
         res = asyncio.run(retry._run_with_retry(fail))
         self.assertIsNone(res)
-        # RETRY_LIMIT попыток, потом стоп
         self.assertEqual(calls[0], config.RETRY_LIMIT)
 
     def test_returns_result_on_success(self):
@@ -82,7 +80,7 @@ class TestRunWithRetry(unittest.TestCase):
 
 
 class TestStartWithRetry(unittest.TestCase):
-    """Повтор подключения: рост паузы, потолок 5 мин, прерывание."""
+    """Connection retry: pause growth, 5-min cap, interruption."""
 
     def setUp(self):
         self._orig_sleep = client.asyncio.sleep
@@ -92,14 +90,13 @@ class TestStartWithRetry(unittest.TestCase):
 
     def test_delay_grows_and_success_exits(self):
         sleeps = []
-        orig = client.asyncio.sleep  # оригинал до подмены
+        orig = client.asyncio.sleep
         async def fake_sleep(sec):
             sleeps.append(sec)
             await orig(0)
         client.asyncio.sleep = fake_sleep
         app = _FakeApp(fails=2)
         asyncio.run(client._start_with_retry(app))
-        # 2 провала + успех на 3-й. Паузы 1, 2 мин.
         self.assertEqual(app.attempts, 3)
         self.assertEqual(sleeps, [60, 120])
 
@@ -108,7 +105,7 @@ class TestStartWithRetry(unittest.TestCase):
 
         async def fake_sleep(sec):
             sleeps.append(sec)
-            raise KeyboardInterrupt()  # выходим из цикла после первой паузы
+            raise KeyboardInterrupt()  # exit the loop after the first pause
 
         client.asyncio.sleep = fake_sleep
 
@@ -118,7 +115,6 @@ class TestStartWithRetry(unittest.TestCase):
 
         with self.assertRaises(KeyboardInterrupt):
             asyncio.run(client._start_with_retry(AlwaysFail()))
-        # Первая пауза — base (1 мин), ещё не потолок
         self.assertEqual(sleeps[0], 60)
 
     def test_exhausts_and_raises(self):
@@ -132,7 +128,6 @@ class TestStartWithRetry(unittest.TestCase):
             async def start(self):
                 raise ConnectionError("boom")
 
-        # После RETRY_LIMIT попыток — бросаем (не крутим бесконечно)
         with self.assertRaises(ConnectionError):
             asyncio.run(client._start_with_retry(AlwaysFail()))
 
@@ -151,7 +146,7 @@ class TestStartWithRetry(unittest.TestCase):
     def test_non_network_error_propagates(self):
         class AuthFail:
             async def start(self):
-                raise ValueError("неверный пароль")  # НЕ сетевая ошибка
+                raise ValueError("wrong password")  # NOT a network error
 
         with self.assertRaises(ValueError):
             asyncio.run(client._start_with_retry(AuthFail()))

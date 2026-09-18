@@ -1,50 +1,51 @@
 #!/bin/bash
 # ================================================================
-# claude-tg-bot.sh — запуск Telegram-бота одной командой.
+# claude-tg-bot.sh — run the Telegram bot with a single command.
 #
-# Что делает:
-#   1. Создаёт и активирует venv (.venv), если его нет.
-#   2. Устанавливает зависимости из requirements.txt (если не установлены).
-#   3. Ищет config.env (в ~/.claude-tg-bot, затем рядом со скриптом) и
-#      проверяет, что он заполнен реальными значениями. Если файла нет —
-#      работает с настройками по умолчанию.
-#   4. Запускает бота (python -m claude_tg_bot).
-#      Бот при старте проверяет запущенные процессы: если уже работает —
-#      сообщит об этом и второй раз не стартует.
+# What it does:
+#   1. Creates and activates the venv (.venv), if absent.
+#   2. Installs the dependencies from requirements.txt (if not installed).
+#   3. Looks for config.env (in ~/.claude-tg-bot, then next to the script) and
+#      checks that it's filled with real values. If the file is absent — works
+#      with the default settings.
+#   4. Runs the bot (python -m claude_tg_bot).
+#      On startup the bot checks running processes: if one is already running —
+#      it reports it and won't start a second time.
 #
-# Использование:
+# Usage:
 #   bash claude-tg-bot.sh
 # ================================================================
 set -euo pipefail
 
-# Директория скрипта (работает при запуске откуда угодно)
+# The script directory (works when run from anywhere)
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
-# --- 0. Подготовка окружения (Python + venv + зависимости) ------------------
-# Вынесено в общий модуль lib/env.sh, чтобы использовать его и из setup.sh.
-# setup_env() выбирает Python >=3.10, создаёт/пересоздаёт venv, ставит
-# зависимости. Запускаем бота через $VENV/bin/python (активацию venv не делаем).
+# --- 0. Prepare the environment (Python + venv + deps) ----------------------
+# Moved into the shared module lib/env.sh so setup.sh can use it too.
+# setup_env() picks Python >=3.10, creates/recreates the venv, installs the
+# dependencies. We run the bot via $VENV/bin/python (we don't activate the venv).
 source "$DIR/lib/env.sh"
 setup_env
 
-# config.env ищется в двух местах (по приоритету, как в config.py):
-#   1. ~/.claude-tg-bot/config.env  — каталог, где лежит папка sandbox;
-#   2. <каталог скрипта>/config.env  — рядом с claude-tg-bot.sh.
-# Корень проектов (PROJECTS_ROOT) и каталог песочницы (SANDBOX_ROOT) печатает
-# сам бот в main — сразу после config.env, чтобы они шли подряд.
+# config.env is looked up in two places (by priority, as in config.py):
+#   1. ~/.claude-tg-bot/config.env  — the directory that holds the sandbox;
+#   2. <script directory>/config.env — next to claude-tg-bot.sh.
+# The bot prints PROJECTS_ROOT and SANDBOX_ROOT itself in main — right after
+# config.env, so they come consecutively.
 CONFIG_ENV="${HOME}/.claude-tg-bot/config.env"
 if [ ! -f "$CONFIG_ENV" ]; then
     CONFIG_ENV="$DIR/config.env"
 fi
 
-# Путь к конфигу показываем первым — он определяет и корень проектов, и песочницу.
-# Корень проектов и каталог песочницы печатает сам бот в main (сразу после config.env).
-# Указываем язык из этого конфига для общих сообщений (см. lib/lib_msg).
+# Show the config path first — it determines both the projects root and the
+# sandbox. The bot prints the projects root and the sandbox directory in main
+# (right after config.env). We pass the language from this config for the shared
+# messages (see lib/lib_msg).
 LIB_CONFIG_ENV="$CONFIG_ENV"
 echo "$(lib_msg run.sh.config_env)" | sed "s|{path}|$CONFIG_ENV|"
 
-# --- 3. Проверка config.env — файл обязателен (в одном из двух мест) -------
+# --- 3. Check config.env — the file is mandatory (in one of the two places) --
 if [ ! -f "$CONFIG_ENV" ]; then
     echo "$(lib_msg run.sh.cfg_missing)"
     echo "   - ${HOME}/.claude-tg-bot/config.env"
@@ -55,9 +56,9 @@ if [ ! -f "$CONFIG_ENV" ]; then
     exit 1
 else
 
-    # Плейсхолдеры, которые надо обязательно заменить.
-    # Проверяем ЦЕЛИКОМ строки вида КЛЮЧ=ПЛЕЙСХОЛДЕР (по якорям ^ и $),
-    # чтобы не ловить подстроки — например, число 123456789 внутри реального API_HASH.
+    # Placeholders that must be replaced.
+    # We check the WHOLE lines of the form KEY=PLACEHOLDER (via ^ and $ anchors),
+    # so we don't catch substrings — e.g. the number 123456789 inside a real API_HASH.
     UNSET=$(grep -E -e "^API_ID=ЗАМЕНИ_МЕНЯ$" -e "^API_HASH=ЗАМЕНИ_МЕНЯ$" -e "^API_ID=0$" -e "^PHONE=\+7XXXXXXXXXX$" -e "^ALLOWED_USERS=123456789$" -e "^ALLOWED_USERS=$" -e "^PROJECTS_ROOT=$" "$CONFIG_ENV" || true)
     if [ -n "$UNSET" ]; then
         echo "$(lib_msg run.sh.cfg_placeholders)"
@@ -72,27 +73,27 @@ else
         exit 1
     fi
 
-    # Предупреждение: если ALLOWED_CHAT_IDS пуст, бот ответит в «Избранном»
+    # Warning: if ALLOWED_CHAT_IDS is empty, the bot answers only in Saved Messages
     if grep -qE '^ALLOWED_CHAT_IDS=""$|^ALLOWED_CHAT_IDS=$' "$CONFIG_ENV"; then
         echo "$(lib_msg run.sh.chat_ids_empty)"
         echo "$(lib_msg run.sh.chat_ids_empty_hint)"
     fi
 fi
 
-# --- 4. Запуск бота --------------------------------------------------------
-# Бот сам проверяет single-instance (сканирует запущенные процессы): если
-# уже работает — напечатает об этом и второй раз не стартует.
-# KEEP_AWAKE (из config.env): если true — держим макбук бодрствующим
-# (caffeinate -dimsu), чтобы при засыпании не отключалась сеть и бот не
-# переставал принимать/отвечать на сообщения. По умолчанию false.
-# Если caffeinate недоступен (не macOS) — без него.
+# --- 4. Run the bot ---------------------------------------------------------
+# The bot checks single-instance on its own (scans running processes): if one is
+# already running — it prints it and won't start a second time.
+# KEEP_AWAKE (from config.env): if true — keep the laptop awake
+# (caffeinate -dimsu) so sleep doesn't drop the network and the bot keeps
+# receiving/answering messages. Default false.
+# If caffeinate is unavailable (not macOS) — without it.
 KEEP_AWAKE="false"
 if [ -f "$CONFIG_ENV" ]; then
     KEEP_AWAKE="$(grep -E '^KEEP_AWAKE=' "$CONFIG_ENV" | tail -1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' || true)"
 fi
 echo "$(lib_msg run.sh.launching)"
-# "$@" внизу — проброс аргументов вызова (напр. --log=info) в python -m.
-# Запускаем через $VENV/bin/python (venv не активировали в setup_env).
+# "$@" below — pass through the call arguments (e.g. --log=info) into python -m.
+# We run via $VENV/bin/python (we didn't activate the venv in setup_env).
 if { [ "$KEEP_AWAKE" = "true" ] || [ "$KEEP_AWAKE" = "1" ] || [ "$KEEP_AWAKE" = "yes" ]; } && command -v caffeinate >/dev/null 2>&1; then
     exec caffeinate -dimsu "$VENV/bin/python" -m claude_tg_bot "$@"
 else
