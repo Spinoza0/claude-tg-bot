@@ -1,4 +1,4 @@
-"""Проверка доступа: кто может писать боту и в каких чатах."""
+"""Access control: who may write to the bot and in which chats."""
 
 from pyrogram.types import Message
 
@@ -10,33 +10,33 @@ def _is_allowed_user(user_id: int) -> bool:
 
 
 def _is_allowed_chat(user_id: int, chat_id: int) -> bool:
-    """Разрешён ли чат для обычных сообщений.
+    """Whether the chat is allowed for regular messages.
 
-    - Если ALLOWED_CHAT_IDS пуст — разрешён ТОЛЬКО чат, где chat_id
-      равен твоему user_id (это Saved Messages / «Избранное»).
-    - Если ALLOWED_CHAT_IDS задан — чат обязан быть в этом списке.
+    - If ALLOWED_CHAT_IDS is empty, only the chat where chat_id equals your
+      own user_id is allowed (Saved Messages).
+    - If ALLOWED_CHAT_IDS is set, the chat must be in that list.
     """
     if config.ALLOWED_CHAT_IDS:
         return chat_id in config.ALLOWED_CHAT_IDS
-    # Список пуст: разрешаем только чат, совпадающий с user_id
-    # (в Saved Messages chat_id равен id твоего аккаунта).
+    # Empty list: allow only the chat matching the user_id
+    # (in Saved Messages the chat_id equals your account id).
     return chat_id == user_id
 
 
 def _allowed(user_id: int, chat_id: int) -> bool:
-    """Отвечать ли: отправитель разрешён И чат разрешён.
+    """Whether to reply: sender allowed AND chat allowed.
 
-    Бот под твоей учёткой не должен отвечать везде, где ты пишешь.
-    Обычные сообщения требуют и разрешённого юзера, и разрешённого чата
-    (см. _is_allowed_chat). Для @helpbot чат НЕ ограничивается — только юзер
-    (см. on_sandbox).
+    The bot runs under your account and must not reply everywhere you write.
+    Regular messages require both an allowed user and an allowed chat
+    (see _is_allowed_chat). For @helpbot the chat is NOT restricted — only
+    the user (see on_sandbox).
     """
     return _is_allowed_user(user_id) and _is_allowed_chat(user_id, chat_id)
 
 
 def _author(message: Message) -> int:
-    """user_id отправителя сообщения (надёжнее, чем chat.id в группах)."""
+    """The message sender's user_id (more reliable than chat.id in groups)."""
     if message.from_user is not None:
         return message.from_user.id
-    # если отправитель не определён (напр. канал) — считаем chat.id
+    # sender not determined (e.g. channel) — fall back to chat.id
     return message.chat.id

@@ -1,4 +1,4 @@
-"""Создание Telegram-клиента, точка входа main() и подключение с повторами."""
+"""Telegram client creation, the main() entry point, and retrying connections."""
 
 import asyncio
 import logging
@@ -7,7 +7,7 @@ import sys
 import pyrogram
 from pyrogram import Client, filters
 
-from . import config
+from . import config, i18n
 from .log import log_filename, maybe_cleanup_old_logs, parse_log_flag, setup_logging
 from .process import _active_tasks, acquire_single_instance
 from .retry import _retry_backoff_delay
@@ -20,23 +20,23 @@ from .status import (
     _use_color,
 )
 
-# События бота (запуск/остановка, команды, запуск Claude, ошибки) — в файл лога.
+# Bot events (start/stop, commands, Claude launch, errors) — to the log file.
 logger = logging.getLogger("claude_tg_bot")
 
 
 def _build_client() -> Client:
-    """Создать Client Pyrogram (Kurigram, dev-ветка) с нативной поддержкой MTProto-прокси.
+    """Build a Pyrogram Client (Kurigram, dev branch) with native MTProto-proxy support.
 
-    Kurigram (dev) умеет MTProto-прокси из коробки: передаём proxy строкой
-    "tg://proxy?server=...&port=...&secret=..." — он сам распознаёт secret
-    (ee → FakeTLS с SNI-доменом, dd/plain → random padding), выбирает нужный
-    транспорт TCPIntermediatePadded и делает FakeTLS-хендшейк. Никакой внешний
-    mtproxy-bridge не нужен.
+    Kurigram (dev) supports MTProto-proxy out of the box: we pass the proxy as a
+    string "tg://proxy?server=...&port=...&secret=..." — it recognizes the secret
+    (ee → FakeTLS with an SNI-domain, dd/plain → random padding), picks the right
+    TCPIntermediatePadded transport and does the FakeTLS handshake. No external
+    mtproxy-bridge is needed.
 
-    Если MT_PROXY не задан — передаём None: бот подключается к Telegram
-    напрямую, без прокси (MT_PROXY больше не обязателен).
+    If MT_PROXY is unset — we pass None: the bot connects to Telegram directly,
+    without a proxy (MT_PROXY is no longer mandatory).
 
-    Возвращает настроенный Client.
+    Returns the configured Client.
     """
     return Client(
         name=config.SESSION_NAME,
@@ -44,42 +44,44 @@ def _build_client() -> Client:
         api_hash=config.API_HASH,
         phone_number=config.PHONE,
         password=config.CLOUD_PASSWORD,
-        # hide_password=True — прячем ввод пароля 2FA (getpass без эха),
-        # чтобы он не светился в терминале. Код подтверждения остаётся видимым.
+        # hide_password=True — hide the 2FA password prompt (getpass without echo)
+        # so it doesn't show in the terminal. The confirmation code remains visible.
         hide_password=True,
         proxy=config.MT_PROXY or None,
-        # workers=1 — сообщения обрабатываются ПОСЛЕДОВАТЕЛЬНО. Иначе Pyrogram
-        # параллельно запускает несколько процессов Claude; при сетевом сбое это
-        # множит зависшие процессы и даёт кашу из ответов вместо внятного таймаута.
+        # workers=1 — messages are processed SEQUENTIALLY. Otherwise Pyrogram
+        # spawns several Claude processes in parallel; on a network failure that
+        # multiplies hung processes and yields a mess of answers instead of a clear
+        # timeout.
         workers=1,
     )
 
 
 async def _start_with_retry(app):
-    """Подключение к Telegram с повторными попытками при сбое сети.
+    """Connect to Telegram retrying on network failure.
 
-    Вместо вылета с трейсбеком (TimeoutError после внутренних ретраев) печатаем
-    КОРОТКОЕ понятное сообщение и повторяем подключение с единой схемой паузы:
-    1, 2, ... мин (потолок RETRY_MAX_DELAY). После RETRY_LIMIT попыток —
-    сообщаем об ошибке и завершаемся (не крутим бесконечно).
+    Instead of crashing with a traceback (TimeoutError after its internal
+    retries) we print a SHORT clear message and repeat the connection with the
+    shared backoff scheme: 1, 2, ... min (cap RETRY_MAX_DELAY). After RETRY_LIMIT
+    attempts — report the error and exit (we don't loop forever).
 
-    Ctrl+C прерывает паузу: KeyboardInterrupt/CancelledError — это
-    BaseException, мы их НЕ ловим, поэтому приложение закрывается как обычно.
+    Ctrl+C interrupts the pause: KeyboardInterrupt/CancelledError are
+    BaseException and we don't catch them, so the app closes as usual.
     """
     for attempt in range(1, config.RETRY_LIMIT + 1):
         try:
             await app.start()
-            logger.info("Подключено к Telegram")
-            return  # подключились — выходим из цикла
+            logger.info("Connected to Telegram")
+            return  # connected — exit the loop
         except KeyboardInterrupt:
             raise
         except (ConnectionError, TimeoutError, OSError) as e:
             if attempt < config.RETRY_LIMIT:
                 pause = _retry_backoff_delay(attempt)
                 mins = max(1, round(pause / 60))
-                # Одна короткая строка: без спама повторяющихся ошибок.
-                note = f"{_friendly(str(e))}. Повтор через {mins} мин ({attempt}/{config.RETRY_LIMIT})..."
-                logger.warning("Подключение к Telegram: попытка %s/%s неудачна: %s",
+                # One short line: no spam of repeated errors.
+                note = i18n.t("client.connect_retry", friendly=_friendly(str(e)),
+                              mins=mins, attempt=attempt, limit=config.RETRY_LIMIT)
+                logger.warning("Telegram connection: attempt %s/%s failed: %s",
                                attempt, config.RETRY_LIMIT, _friendly(str(e)))
                 if _use_color():
                     line = f"\033[31m❌ {note}\033[0m"
@@ -89,28 +91,27 @@ async def _start_with_retry(app):
                 sys.stdout.flush()
                 await asyncio.sleep(pause)
             else:
-                logger.error("Не удалось подключиться к Telegram после %s попыток: %s",
+                logger.error("Could not connect to Telegram after %s attempts: %s",
                              config.RETRY_LIMIT, _friendly(str(e)))
                 sys.stdout.write(
-                    "\n❌ Не удалось подключиться к Telegram после "
-                    f"{config.RETRY_LIMIT} попыток: {_friendly(str(e))}\n"
+                    i18n.t("client.connect_fail", limit=config.RETRY_LIMIT, friendly=_friendly(str(e)))
                 )
                 sys.stdout.flush()
                 raise
 
 
 async def _shutdown(app):
-    """Отменить фоновые задачи и остановить Pyrogram, чтобы бот вышел чисто."""
-    # 1. Отменяем все фоновые задачи (вызовы claude), не дожидаясь их вечно —
-    #    они сами в finally убьют свои процессы и дочистят файлы.
+    """Cancel background tasks and stop Pyrogram so the bot exits cleanly."""
+    # 1. Cancel all background tasks (claude calls) without waiting for them
+    #    forever — they kill their processes and clean up files in finally.
     tasks = list(_active_tasks)
     for t in tasks:
         t.cancel()
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
-    # 2. Останавливаем Pyrogram (гасит его внутренние воркеры/ретраи).
-    #    block=False — не ждём, пока зависшие на ретраях воркеры завершатся,
-    #    иначе Ctrl+C «не прерывает» бота.
+    # 2. Stop Pyrogram (turns off its internal workers/retries).
+    #    block=False — don't wait for workers hung on retries to finish,
+    #    otherwise Ctrl+C "doesn't interrupt" the bot.
     try:
         await app.stop(block=False)
     except Exception:
@@ -118,75 +119,80 @@ async def _shutdown(app):
 
 
 async def main():
+    # Fail fast if no locale file at all is available (neither the configured
+    # language nor English): we can't produce readable strings, so stop instead
+    # of silently emitting bare i18n keys.
+    i18n.ensure_available()
     config.validate()
-    # Защита от второго экземпляра: если бот уже запущен — выходим, не стартуя.
+    # Second-instance guard: if the bot is already running — exit without starting.
     if not acquire_single_instance():
         return
 
-    # Логирование (issue #12): включается флагом --log[=уровень]. По умолчанию
-    # (без флага) — не пишем; при интерактивном запуске без лога, но с уже
-    # существующими логами — предлагаем удалить старые.
+    # Logging (issue #12): enabled by the --log[=level] flag. By default (no flag)
+    # we don't write; on an interactive launch without a log but with existing
+    # logs — offer to delete the old ones.
     log_enabled, log_level = parse_log_flag(sys.argv)
     log_path = None
     if log_enabled:
         log_path = setup_logging(log_level, log_filename())
-        logger.info("Логирование включено (уровень=%s), файл: %s",
+        logger.info("Logging enabled (level=%s), file: %s",
                     logging.getLevelName(log_level), log_path)
     else:
         maybe_cleanup_old_logs()
 
     app = _build_client()
 
-    # Важно: используем filters.all, а не filters.INCOMING.
-    #  - В «Избранном» свои сообщения приходят как incoming, но В ГРУППЕ твои
-    #    сообщения (ты = аккаунт бота) — как outgoing. Поэтому filters.incoming
-    #    в группах их не ловит → нужен filters.all.
-    #  - Чтобы бот не зациклился на собственных ответах, в on_all_message
-    #    игнорируем исходящие сообщения-реплаи (reply_to_message_id).
-    # workers=1 — обрабатываем сообщения ПОСЛЕДОВАТЕЛЬНО. Иначе Pyrogram
-    # параллельно запускает несколько процессов Claude; при сетевом сбое это множит
-    # зависшие процессы и даёт кашу из ответов вместо внятного таймаута.
+    # Important: use filters.all, not filters.INCOMING.
+    #  - In Saved Messages our own messages come as incoming, but IN A GROUP your
+    #    messages (you = the bot account) come as outgoing. So filters.incoming
+    #    doesn't catch them in groups → filters.all is needed.
+    #  - To avoid the bot feeding back on its own answers, on_all_message ignores
+    #    outgoing reply messages (reply_to_message_id).
+    # workers=1 — we process messages SEQUENTIALLY. Otherwise Pyrogram runs
+    # several Claude processes in parallel; on a network failure that multiplies
+    # hung processes and yields a mess of answers instead of a clear timeout.
     app.on_message(filters.all & ~filters.service)(on_all_message)
 
-    # Перехватываем логи Pyrogram (ошибки подключения/ретраи), чтобы вместо
-    # спама в stderr показывать в консоли единую строку статуса.
+    # Intercept Pyrogram logs (connection errors/retries) so the console shows a
+    # single status line instead of a flood on stderr.
     _STATUS_FILTER.install()
 
-    print(f"Запуск бота. Telegram-сессия: {config.SESSION_NAME}")
-    # config.env путь уже показал run.sh (==> config.env). Здесь печатаем корень
-    # проектов и каталог песочницы подряд, чтобы было видно, где лежит что.
-    print(f"Корень проектов (PROJECTS_ROOT): {config.PROJECTS_ROOT}")
-    print(f"Каталог песочницы ({config.SANDBOX_COMMAND}): {config.SANDBOX_ROOT}")
-    print("MT-прокси:", ("задан" if config.MT_PROXY else "НЕ задан (прямое подключение)"))
-    print(f"Команда Claude: {config.CLAUDE_COMMAND} {config.COMMAND_ARGS}".strip())
+    print(i18n.t("client.startup", name=config.SESSION_NAME))
+    # run.sh already showed the config.env path (==> config.env). Here we print the
+    # projects root and the sandbox directory in a row, so it's clear what's where.
+    print(i18n.t("client.root", path=config.PROJECTS_ROOT))
+    print(i18n.t("client.sandbox_dir", cmd=config.SANDBOX_COMMAND, path=config.SANDBOX_ROOT))
+    mt_state = i18n.t("client.mtproxy_set") if config.MT_PROXY else i18n.t("client.mtproxy_unset")
+    print(i18n.t("client.mtproxy", state=mt_state))
+    print(i18n.t("client.claude_cmd", cmd=f"{config.CLAUDE_COMMAND} {config.COMMAND_ARGS}".strip()))
 
-    # start() — подключаемся к Telegram (в т.ч. логин). При сбое сети не
-    # вылетаем с трейсбеком, а печатаем короткое сообщение и повторяем
-    # с растущей паузой. Ctrl+C прерывает паузу.
+    # start() — connect to Telegram (incl. login). On a network failure we don't
+    # crash with a traceback, but print a short message and retry with a growing
+    # pause. Ctrl+C interrupts the pause.
     await _start_with_retry(app)
 
-    logger.info("Бот запущен и работает (в %s)", config.SANDBOX_ROOT)
-    print("✅ Бот запущен и работает. Жду сообщения в Telegram.")
-    print("   Чтобы остановить — нажми Ctrl+C в этом окне (SIGINT).")
+    logger.info("Bot running and working (in %s)", config.SANDBOX_ROOT)
+    print(i18n.t("client.running"))
+    print(i18n.t("client.stop_hint"))
 
-    # Фоновая задача: держит в консоли блок статуса «Работаю» / «❌ Ошибка: …».
-    # Останавливается вместе с ботом.
+    # Background task: keeps the console status block "Working" / "❌ Error: …".
+    # Stops together with the bot.
     stop_status = asyncio.Event()
     status_task = asyncio.create_task(_status_loop(stop_status))
 
-    # idle() — держим процесс живым, пока не придёт SIGINT/SIGTERM.
+    # idle() — keep the process alive until SIGINT/SIGTERM.
     try:
         await pyrogram.idle()
     finally:
-        # Останавливаем статус-луп и корректно завершаемся.
+        # Stop the status loop and exit cleanly.
         stop_status.set()
         status_task.cancel()
-        # Перенос строк после последнего блока статуса — иначе следующий вывод
-        # (трейсбек, shell prompt) прилипнет к последней строке блока.
+        # Newline after the last status block — otherwise the next output
+        # (traceback, shell prompt) would stick to the last block line.
         sys.stdout.write("\n" * (_STATUS_PREV_LINES + 1))
         sys.stdout.flush()
-        # Корректная остановка: отменяем фоновые задачи (они могли остаться
-        # зависшими на claude) и глушим Pyrogram. Иначе asyncio.run не может
-        # завершить цикл событий, пока живы эти задачи, и Ctrl+C «не работает».
-        logger.info("Бот остановлен")
+        # Clean shutdown: cancel the background tasks (they may be stuck on
+        # claude) and silence Pyrogram. Otherwise asyncio.run can't finish the
+        # event loop while those tasks are alive, and Ctrl+C "doesn't work".
+        logger.info("Bot stopped")
         await _shutdown(app)

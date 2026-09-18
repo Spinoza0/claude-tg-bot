@@ -22,6 +22,9 @@ cd "$DIR"
 source "$DIR/lib/env.sh"
 setup_env
 
-echo "==> Запускаю настройку (claude_tg_bot/setup.py)..."
+# Язык общих консольных сообщений — из config.env (см. lib/lib_msg).
+LIB_CONFIG_ENV="${HOME}/.claude-tg-bot/config.env"
+[ -f "$LIB_CONFIG_ENV" ] || LIB_CONFIG_ENV="$DIR/config.env"
+echo "$(lib_msg setup.sh.launching)"
 echo
 exec "$VENV/bin/python" claude_tg_bot/setup.py

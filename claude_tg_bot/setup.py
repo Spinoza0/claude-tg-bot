@@ -1,9 +1,9 @@
-"""Интерактивный setup: создание/редактирование config.env (issue #4).
+"""Interactive setup: create/edit config.env (issue #4).
 
-Запускается обёрткой setup.sh из корня проекта. Спрашивает настройки по
-группам (обязательные и необязательные), создаёт ~/.claude-tg-bot/config.env.
-Если файл уже есть — не затирает, а редактирует: делает копию config.env.bak,
-показывает текущее значение (Enter — оставить), замену — по вводу нового.
+Run by the setup.sh wrapper from the project root. Asks for settings by group
+(mandatory and optional) and creates ~/.claude-tg-bot/config.env.
+If the file already exists it does not overwrite but edits: makes a copy
+config.env.bak, shows the current value (Enter — keep), replaces on new input.
 """
 
 from __future__ import annotations
@@ -12,41 +12,44 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-# Каталог конфига и файл config.env (живут в ~/.claude-tg-bot/, рядом с sandbox).
+from . import i18n
+
+# Config directory and config.env file (live in ~/.claude-tg-bot/, next to sandbox).
 _CFG_DIR = Path.home() / ".claude-tg-bot"
 _CFG_PATH = _CFG_DIR / "config.env"
 
-# Каждая настройка: (ключ, обязательная?, дефолт, подсказка для вопроса).
-# required=True — без значения бот не заработает (API_ID/API_HASH/PHONE/
-# ALLOWED_USERS), в вопросе помечается «(обязательно)». required=False можно
-# оставить пустым (Enter). Настройки сгруппированы по смыслу.
+# Each setting: (key, mandatory?, default, hint for the prompt).
+# required=True — the bot won't work without it (API_ID/API_HASH/PHONE/
+# ALLOWED_USERS); the prompt marks it "(mandatory)". required=False may be left
+# empty (Enter). Settings are grouped by meaning.
 GROUPS = [
-    ("Telegram (обязательные)", [
-        ("API_ID", True, "", "ID приложения (my.telegram.org/apps)"),
-        ("API_HASH", True, "", "Hash приложения (my.telegram.org/apps)"),
-        ("PHONE", True, "", "Номер аккаунта Telegram, напр. +79991234567"),
-        ("MT_PROXY", False, "", "MTProto-прокси (tg://proxy?server=..&port=..&secret=..). Пусто — прямое подключение"),
-        ("CLOUD_TOKEN_PASSWORD", False, "", "Пароль 2FA (облачный), если включена двухфакторка"),
+    ("Telegram (mandatory)", [
+        ("API_ID", True, "", "App ID (my.telegram.org/apps)"),
+        ("API_HASH", True, "", "App hash (my.telegram.org/apps)"),
+        ("PHONE", True, "", "Telegram account number, e.g. +79991234567"),
+        ("MT_PROXY", False, "", "MTProto proxy (tg://proxy?server=..&port=..&secret=..). Empty — direct connection"),
+        ("CLOUD_TOKEN_PASSWORD", False, "", "2FA (cloud) password, if two-factor is enabled"),
     ]),
-    ("Доступ", [
-        ("ALLOWED_USERS", True, "", "user_id тех, кому бот отвечает (через запятую). Пусто — бот закрыт"),
-        ("ALLOWED_CHAT_IDS", False, "", "chat_id, где бот отвечает. Пусто — только «Избранное»"),
+    ("Access", [
+        ("ALLOWED_USERS", True, "", "user_id of those the bot answers (comma-separated). Empty — bot is closed"),
+        ("ALLOWED_CHAT_IDS", False, "", "chat_id where the bot answers. Empty — only Saved Messages"),
     ]),
-    ("Запуск Claude", [
-        ("CLAUDE_COMMAND", True, "claude", "Команда запуска Claude (или обёртки), напр. claude-cline"),
-        ("COMMAND_ARGS", False, "", "Доп. аргументы к CLAUDE_COMMAND (напр. --provider openai-compatible)"),
-        ("COMMAND_ARGS_ALTERNATIVE", False, "", "Альтернативные args для смены модели при её недоступности"),
-        ("CLAUDE_SYSTEM_PROMPT", False, "", "Системный промпт (--append-system-prompt). Пусто — стандартный"),
+    ("Claude launch", [
+        ("CLAUDE_COMMAND", True, "claude", "Claude (or wrapper) launch command, e.g. claude-cline"),
+        ("COMMAND_ARGS", False, "", "Extra args for CLAUDE_COMMAND (e.g. --provider openai-compatible)"),
+        ("COMMAND_ARGS_ALTERNATIVE", False, "", "Alternative args to switch the model when it is unavailable"),
+        ("CLAUDE_SYSTEM_PROMPT", False, "", "System prompt (--append-system-prompt). Empty — default"),
     ]),
-    ("Песочница и проекты", [
-        ("SANDBOX_ROOT", False, "", "Каталог песочницы (@helpbot). Пусто — ~/.claude-tg-bot/sandbox"),
-        ("PROJECTS_ROOT", True, "", "Корень проектов, где боту разрешено работать"),
+    ("Sandbox and projects", [
+        ("SANDBOX_ROOT", False, "", "Sandbox folder (@helpbot). Empty — ~/.claude-tg-bot/sandbox"),
+        ("PROJECTS_ROOT", True, "", "Root of projects the bot is allowed to work in"),
     ]),
 ]
 
-# Настройки, которые не спрашиваются (у них осмысленные дефолты) — пишем как есть.
+# Settings not asked about (they have sensible defaults) — written as-is.
 DEFAULTS = {
     "SANDBOX_COMMAND": "@helpbot",
+    "BOT_LANG": "en",
     "CLAUDE_PERMISSION_MODE": "bypassPermissions",
     "CLAUDE_TIMEOUT_SECONDS": "600",
     "MAX_PROMPT_LENGTH": "8000",
@@ -63,7 +66,7 @@ DEFAULTS = {
 
 
 def _strip_inline_comment(val: str) -> str:
-    """Убрать хвост ' # ...' из значения, если он вне кавычек."""
+    """Strip a trailing ' # ...' comment from a value if it's outside quotes."""
     in_quote = False
     quote_char = ""
     for i, ch in enumerate(val):
@@ -78,7 +81,7 @@ def _strip_inline_comment(val: str) -> str:
 
 
 def _load_existing() -> dict[str, str]:
-    """Прочитать текущие значения config.env (если файл есть)."""
+    """Read current config.env values (if the file exists)."""
     result: dict[str, str] = {}
     if not _CFG_PATH.is_file():
         return result
@@ -96,7 +99,7 @@ def _load_existing() -> dict[str, str]:
 
 
 def _sanitize(value: str) -> str:
-    """Подготовить значение для записи: обернуть в кавычки при спецсимволах."""
+    """Prepare a value for writing: wrap in quotes when it contains special chars."""
     value = value.strip()
     if value and any(ch in value for ch in ' "#\''):
         return f'"{value}"'
@@ -104,23 +107,23 @@ def _sanitize(value: str) -> str:
 
 
 def _ask(key: str, hint: str, current: str, default: str, required: bool) -> str:
-    """Задать вопрос по параметру, вернуть значение.
+    """Ask for a setting and return the value.
 
-    key — имя переменной (напр. API_ID), показывается в вопросе; hint —
-    пояснение. current — текущее (редактирование), default — дефолт (создание).
-    Enter — оставить current (если есть) или default. Возвращает значение.
+    key — the variable name (e.g. API_ID) shown in the prompt; hint — a
+    description. current — the current value (editing), default — on creation.
+    Enter — keep current (if any) or default. Returns the value.
     """
     shown = current if current else default
-    tag = "(обязательно)" if required else "(необязательно)"
+    tag = i18n.t("setup.required_tag") if required else i18n.t("setup.optional_tag")
     if shown:
-        prompt = f"{key}: {hint} {tag} [текущее: {shown!r}]. Enter = оставить: "
+        prompt = i18n.t("setup.prompt_current", key=key, hint=hint, tag=tag, shown=shown)
     else:
-        prompt = f"{key}: {hint} {tag}. Enter = пропустить: "
+        prompt = i18n.t("setup.prompt_empty", key=key, hint=hint, tag=tag)
     while True:
         try:
             inp = input(prompt).strip()
         except (EOFError, KeyboardInterrupt):
-            print("\nПрервано. Ничего не сохранено.")
+            print(i18n.t("setup.aborted"))
             raise SystemExit(1)
         if inp == "":
             return shown
@@ -128,10 +131,10 @@ def _ask(key: str, hint: str, current: str, default: str, required: bool) -> str
 
 
 def _render_lines(values: dict[str, str]) -> list[str]:
-    """Собрать строки config.env по группам, с подсказками-комментариями."""
+    """Build config.env lines by group, with hint comments."""
     lines = [
-        "# config.env — создан скриптом setup (claude_tg_bot/setup.py).",
-        "# Полный список настроек и пояснения — см. config.env.example.",
+        "# config.env — generated by the setup script (claude_tg_bot/setup.py).",
+        "# Full list of options and explanations — see config.env.example.",
         "",
     ]
     for title, settings in GROUPS:
@@ -141,7 +144,7 @@ def _render_lines(values: dict[str, str]) -> list[str]:
             lines.append(f"# {hint}")
             lines.append(f"{key}={val}")
         lines.append("")
-    lines.append("# --- Прочее (умолчания) " + "-" * 30)
+    lines.append("# --- Other (defaults) " + "-" * 30)
     for key, val in DEFAULTS.items():
         lines.append(f"{key}={_sanitize(val)}")
     lines.append("")
@@ -149,48 +152,48 @@ def _render_lines(values: dict[str, str]) -> list[str]:
 
 
 def _write(path: Path, values: dict[str, str]) -> None:
-    """Написать config.env, сделав .bak, если файл уже существует."""
+    """Write config.env, making a .bak if the file already exists."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_file():
         bak = path.with_suffix(path.suffix + ".bak")
         shutil.copy2(path, bak)
-        print(f"   Создана резервная копия: {bak}")
+        print(i18n.t("setup.bak_created", path=bak))
     path.write_text("\n".join(_render_lines(values)) + "\n", encoding="utf-8")
-    print(f"   Записан: {path}")
+    print(i18n.t("setup.written", path=path))
 
 
 def main() -> None:
-    print("Настройка claude-tg-bot.\n")
+    print(i18n.t("setup.title") + "\n")
 
     existing = _load_existing()
     if existing:
-        print(f"Найден существующий {_CFG_PATH}. Отредактирую его (Enter — оставить текущее).\n")
+        print(i18n.t("setup.existing", path=_CFG_PATH) + "\n")
     else:
-        print(f"Создам новый {_CFG_PATH}.\n")
+        print(i18n.t("setup.new", path=_CFG_PATH) + "\n")
 
     values: dict[str, str] = {}
     for title, settings in GROUPS:
-        print(f"\n=== {title} ===")
+        print(i18n.t("setup.group_title", title=title))
         for key, required, default, hint in settings:
             current = existing.get(key, "")
             values[key] = _ask(key, hint, current, default, required)
 
     values.update(DEFAULTS)
 
-    # Проверка обязательных параметров: если какой-то пуст — не сохраняем,
-    # а просим заполнить (иначе бот не запустится).
+    # Check mandatory params: if any is empty we don't save, but ask to fill it
+    # in (otherwise the bot won't start).
     missing = [k for g in GROUPS for k, req, _d, _h in g[1]
                if req and not values.get(k)]
     if missing:
-        print("\n❌ Не заполнены обязательные параметры: " + ", ".join(missing))
-        print("   Ничего не сохранено. Перезапусти setup.sh и заполни их.")
+        print(i18n.t("setup.missing", missing=", ".join(missing)))
+        print(i18n.t("setup.not_saved"))
         raise SystemExit(1)
 
-    print(f"\n--- Итог: {_CFG_PATH}")
+    print(i18n.t("setup.result", path=_CFG_PATH))
     _write(_CFG_PATH, values)
-    print("\nГотово. Дальше:")
-    print("  1. Запусти: bash claude-tg-bot.sh")
-    print("  2. При первом входе MTProto-клиент запросит код подтверждения из Telegram.")
+    print(i18n.t("setup.done1"))
+    print(i18n.t("setup.done2"))
+    print(i18n.t("setup.done3"))
 
 
 if __name__ == "__main__":

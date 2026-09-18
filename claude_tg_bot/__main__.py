@@ -1,4 +1,4 @@
-"""Точка входа: python -m claude_tg_bot (или python3 claude_tg_bot/__main__.py)."""
+"""Entry point: python -m claude_tg_bot (or python3 claude_tg_bot/__main__.py)."""
 
 import asyncio
 

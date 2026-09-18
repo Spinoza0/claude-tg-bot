@@ -1,8 +1,8 @@
-"""Единый механизм повторов с растущей паузой (issue #6).
+"""Shared retry mechanism with a growing backoff (issue #6).
 
-Общий для долгих повторов (подключение к Telegram, вызовы Claude) и переопределяемый
-короткими (отправка сообщений). Пауза после n-й неудачи растёт как
-base * multiplier^(n-1) с потолком max.
+Common for long retries (Telegram connection, Claude calls) and overridden by
+short ones (message sending). The pause after the n-th failure grows as
+base * multiplier^(n-1), capped at max.
 """
 
 import asyncio
@@ -11,10 +11,10 @@ from . import config
 
 
 def _retry_backoff_delay(n: int) -> float:
-    """Пауза перед (n)-м повтором: base * multiplier^(n-1) с потолком max.
+    """Pause before the n-th retry: base * multiplier^(n-1), capped at max.
 
-    n отсчитывается от 1 (первый повтор). Так после первой неудачи — base,
-    после второй — base*multiplier и т.д. до max. Возвращает секунды.
+    n is counted from 1 (first retry): after the first failure — base, after the
+    second — base*multiplier, and so on up to max. Returns seconds.
     """
     delay = config.RETRY_BASE_DELAY * (config.RETRY_MULTIPLIER ** (n - 1))
     return min(delay, config.RETRY_MAX_DELAY)
@@ -28,16 +28,16 @@ async def _run_with_retry(
     max_delay: float | None = None,
     multiplier: float | None = None,
 ):
-    """Единый механизм повторов: вызывает action(), при неудаче ждёт паузу.
+    """Shared retry: calls action(), on failure waits a pause.
 
-    Пауза после n-й неудачи растёт как base*multiplier^(n-1) с потолком max
-    (по умолчанию — из config, см. _retry_backoff_delay). После limit попыток
-    (включая первую) отдаёт None. Не ловит KeyboardInterrupt/CancelledError —
-    прерывание должно работать всегда.
+    The pause after the n-th failure grows as base*multiplier^(n-1), capped at
+    max (by default from config; see _retry_backoff_delay). After `limit`
+    attempts (including the first) returns None. Does not catch
+    KeyboardInterrupt/CancelledError — interruption must always work.
 
-    Параметры limit/base_delay/max_delay/multiplier переопределяют значения из
-    config: для коротких повторов отправки сообщений задаются секундами и
-    multiplier=1.0 (постоянная пауза), для долгих — минуты с ростом.
+    The limit/base_delay/max_delay/multiplier parameters override the config
+    values: for short message-send retries they are set in seconds with
+    multiplier=1.0 (constant pause); for long retries, minutes with growth.
     """
     limit = limit if limit is not None else config.RETRY_LIMIT
     for attempt in range(1, limit + 1):

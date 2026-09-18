@@ -14,6 +14,46 @@
 PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 VENV="$PROJECT_DIR/.venv"
 
+# --- Локализация (общий языковой файл, как в claude_tg_bot/i18n.py) --------
+# Строки консоли берём из claude_tg_bot/locale/<lang>.json через python3, чтобы
+# bash и Python читали ОДИН источник. Язык — из BOT_LANG в config.env (дефолт en).
+
+# Выбрать язык: BOT_LANG из переданного конфига или из стандартных мест.
+lib_lang() {
+    local lang="" cfg
+    for cfg in "${LIB_CONFIG_ENV:-}" "$HOME/.claude-tg-bot/config.env" "$PROJECT_DIR/config.env"; do
+        [ -n "$cfg" ] && [ -f "$cfg" ] || continue
+        lang="$(grep -E '^BOT_LANG=' "$cfg" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' || true)"
+        [ -n "$lang" ] && break
+    done
+    printf '%s' "${lang:-en}"
+}
+
+# Достать строку по ключу из locale/<lang>.json; фолбэк на en; пусто, если нет.
+lib_msg() {
+    local key="${1:-}" lang py base
+    [ -n "$key" ] || return 0
+    lang="$(lib_lang)"
+    base="$PROJECT_DIR"
+    py="$(command -v python3 || true)"
+    [ -n "$py" ] || py="$VENV/bin/python"
+    [ -x "$py" ] || return 0
+    "$py" - "$base" "$lang" "$key" <<'PY'
+import json, os, sys
+base, lang, key = sys.argv[1], sys.argv[2], sys.argv[3]
+d = os.path.join(base, 'claude_tg_bot', 'locale')
+def load(c):
+    try:
+        return json.load(open(os.path.join(d, c + '.json'), encoding='utf-8'))
+    except Exception:
+        return {}
+table = load(lang)
+if key not in table:
+    table = load('en')
+print(table.get(key, ''))
+PY
+}
+
 # --- Выбор подходящего Python (>=3.10) -------------------------------------
 # Боту и kurigram нужен Python 3.10+. Системный python3 бывает старее,
 # поэтому перебираем известные бинарники и берём первый с версией >=3.10.
@@ -56,24 +96,24 @@ _deps_ok() {
 setup_env() {
     PYTHON="$(pick_python || true)"
     if [ -z "$PYTHON" ]; then
-        echo "!! Не найден Python 3.10+. Требуется >=3.10 (нужен для kurigram)."
-        echo "   Установи Python 3.10+ или задай путь: PYTHON=/path/to/python3.13 $0"
+        echo "$(lib_msg env.sh.no_python)"
+        echo "$(lib_msg env.sh.no_python_hint) $0"
         exit 1
     fi
-    echo "==> Python: $PYTHON ($("$PYTHON" -c 'import sys; print(".".join(map(str,sys.version_info[:3])))'))"
+    echo "$(lib_msg env.sh.python)" | sed "s|{py}|$PYTHON|; s|{ver}|$("$PYTHON" -c 'import sys; print(".".join(map(str,sys.version_info[:3])))')|"
 
     # Пересоздаём venv, если он собран старым Python.
     if [ -d "$VENV" ] && ! venv_ok; then
-        echo "==> venv собран старым Python ($("$VENV/bin/python" --version 2>&1)), удаляю и пересоздаю через $PYTHON"
+        echo "$(lib_msg env.sh.rebuild_venv)" | sed "s|{old}|$("$VENV/bin/python" --version 2>&1)|; s|{py}|$PYTHON|"
         rm -rf "$VENV"
     fi
     if [ ! -d "$VENV" ]; then
-        echo "==> venv не найден, создаю: $VENV (через $PYTHON)"
+        echo "$(lib_msg env.sh.create_venv)" | sed "s|{venv}|$VENV|; s|{py}|$PYTHON|"
         "$PYTHON" -m venv "$VENV"
     fi
 
     if ! _deps_ok; then
-        echo "==> Устанавливаю зависимости из requirements.txt ..."
+        echo "$(lib_msg env.sh.install_deps)"
         "$VENV/bin/python" -m pip install --quiet --upgrade pip
         "$VENV/bin/python" -m pip install --quiet -r requirements.txt
     fi
