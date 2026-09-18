@@ -116,9 +116,9 @@ def _ask(key: str, hint: str, current: str, default: str, required: bool) -> str
     shown = current if current else default
     tag = i18n.t("setup.required_tag") if required else i18n.t("setup.optional_tag")
     if shown:
-        prompt = i18n.t("setup.prompt_current", key=key, hint=hint, tag=tag, shown=shown)
+        prompt = i18n.t("setup.prompt_current", name=key, hint=hint, tag=tag, shown=shown)
     else:
-        prompt = i18n.t("setup.prompt_empty", key=key, hint=hint, tag=tag)
+        prompt = i18n.t("setup.prompt_empty", name=key, hint=hint, tag=tag)
     while True:
         try:
             inp = input(prompt).strip()
