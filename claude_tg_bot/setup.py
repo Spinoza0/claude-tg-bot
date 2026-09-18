@@ -47,6 +47,7 @@ GROUPS = [
         ("CLAUDE_SYSTEM_PROMPT", False, "", "System prompt (--append-system-prompt). Empty — default"),
     ]),
     ("Sandbox and projects", [
+        ("SANDBOX_COMMAND", False, "@helpbot", "Trigger to run the sandbox in any chat, e.g. @helpbot"),
         ("SANDBOX_ROOT", False, "", "Sandbox folder (@helpbot). Empty — ~/.claude-tg-bot/sandbox"),
         ("PROJECTS_ROOT", True, "", "Root of projects the bot is allowed to work in"),
     ]),
@@ -54,7 +55,6 @@ GROUPS = [
 
 # Settings not asked about (they have sensible defaults) — written as-is.
 DEFAULTS = {
-    "SANDBOX_COMMAND": "@helpbot",
     "CLAUDE_PERMISSION_MODE": "bypassPermissions",
     "CLAUDE_TIMEOUT_SECONDS": "600",
     "MAX_PROMPT_LENGTH": "8000",
