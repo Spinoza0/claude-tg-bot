@@ -146,7 +146,7 @@ def claude_project_dir(cwd: Path) -> Path:
     """
     cls_projects = Path.home() / ".claude" / "projects"
     # Claude builds the slug from the absolute path: '/' and '.' (e.g. in
-    # sintyurin.ivan, .claude) both become '-'. Previously '.' was mapped to '_',
+    # john.doe, .claude) both become '-'. Previously '.' was mapped to '_',
     # so the slug didn't match, has_session looked for a nonexistent directory,
     # and --continue was never passed — each session started over.
     slug = str(cwd.resolve()).replace("/", "-").replace(".", "-")[:80]

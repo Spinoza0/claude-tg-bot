@@ -22,7 +22,13 @@ _CFG_PATH = _CFG_DIR / "config.env"
 # required=True — the bot won't work without it (API_ID/API_HASH/PHONE/
 # ALLOWED_USERS); the prompt marks it "(mandatory)". required=False may be left
 # empty (Enter). Settings are grouped by meaning.
+# Language codes offered for BOT_LANG — the actual available files in locale/.
+BOT_LANG_CHOICES = i18n.available_langs()
+
 GROUPS = [
+    ("Language", [
+        ("BOT_LANG", True, "en", "Bot language (Telegram + console)"),
+    ]),
     ("Telegram (mandatory)", [
         ("API_ID", True, "", "App ID (my.telegram.org/apps)"),
         ("API_HASH", True, "", "App hash (my.telegram.org/apps)"),
@@ -41,6 +47,7 @@ GROUPS = [
         ("CLAUDE_SYSTEM_PROMPT", False, "", "System prompt (--append-system-prompt). Empty — default"),
     ]),
     ("Sandbox and projects", [
+        ("SANDBOX_COMMAND", False, "@helpbot", "Trigger to run the sandbox in any chat, e.g. @helpbot"),
         ("SANDBOX_ROOT", False, "", "Sandbox folder (@helpbot). Empty — ~/.claude-tg-bot/sandbox"),
         ("PROJECTS_ROOT", True, "", "Root of projects the bot is allowed to work in"),
     ]),
@@ -48,8 +55,6 @@ GROUPS = [
 
 # Settings not asked about (they have sensible defaults) — written as-is.
 DEFAULTS = {
-    "SANDBOX_COMMAND": "@helpbot",
-    "BOT_LANG": "en",
     "CLAUDE_PERMISSION_MODE": "bypassPermissions",
     "CLAUDE_TIMEOUT_SECONDS": "600",
     "MAX_PROMPT_LENGTH": "8000",
@@ -106,19 +111,28 @@ def _sanitize(value: str) -> str:
     return value
 
 
-def _ask(key: str, hint: str, current: str, default: str, required: bool) -> str:
+def _ask(key: str, hint: str, current: str, default: str, required: bool,
+         choices: Optional[list[str]] = None) -> str:
     """Ask for a setting and return the value.
 
     key — the variable name (e.g. API_ID) shown in the prompt; hint — a
     description. current — the current value (editing), default — on creation.
     Enter — keep current (if any) or default. Returns the value.
+
+    If ``choices`` is given (e.g. available languages), it's shown as
+    "(en, ru)" and the answer is validated to be one of them; Enter keeps the
+    current value if it's one of the choices.
     """
     shown = current if current else default
     tag = i18n.t("setup.required_tag") if required else i18n.t("setup.optional_tag")
-    if shown:
-        prompt = i18n.t("setup.prompt_current", key=key, hint=hint, tag=tag, shown=shown)
+    if choices:
+        header = i18n.t("setup.choices", options=", ".join(choices))
     else:
-        prompt = i18n.t("setup.prompt_empty", key=key, hint=hint, tag=tag)
+        header = ""
+    if shown:
+        prompt = header + i18n.t("setup.prompt_current", name=key, hint=hint, tag=tag, shown=shown)
+    else:
+        prompt = header + i18n.t("setup.prompt_empty", name=key, hint=hint, tag=tag)
     while True:
         try:
             inp = input(prompt).strip()
@@ -127,6 +141,9 @@ def _ask(key: str, hint: str, current: str, default: str, required: bool) -> str
             raise SystemExit(1)
         if inp == "":
             return shown
+        if choices and inp.lower() not in [c.lower() for c in choices]:
+            print(i18n.t("setup.invalid_choice", options=", ".join(choices)))
+            continue
         return inp
 
 
@@ -172,11 +189,15 @@ def main() -> None:
         print(i18n.t("setup.new", path=_CFG_PATH) + "\n")
 
     values: dict[str, str] = {}
+    lang_choices: dict[str, list[str]] = {"BOT_LANG": BOT_LANG_CHOICES}
     for title, settings in GROUPS:
         print(i18n.t("setup.group_title", title=title))
         for key, required, default, hint in settings:
             current = existing.get(key, "")
-            values[key] = _ask(key, hint, current, default, required)
+            values[key] = _ask(key, hint, current, default, required,
+                               choices=lang_choices.get(key))
+            if key == "BOT_LANG" and values[key]:
+                i18n.set_lang(values[key])
 
     values.update(DEFAULTS)
 

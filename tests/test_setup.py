@@ -1,8 +1,9 @@
 """Tests for the setup script (issue #4): pure functions without interactive input."""
 
 import unittest
+from unittest import mock
 
-from claude_tg_bot.setup import GROUPS, _sanitize, _strip_inline_comment
+from claude_tg_bot.setup import BOT_LANG_CHOICES, GROUPS, _ask, _sanitize, _strip_inline_comment
 
 
 class TestGroupRequired(unittest.TestCase):
@@ -15,6 +16,25 @@ class TestGroupRequired(unittest.TestCase):
     def test_required_keys_present(self):
         for key in ("API_ID", "API_HASH", "PHONE", "ALLOWED_USERS", "PROJECTS_ROOT"):
             self.assertIn(key, {k for g in GROUPS for k, _r, _d, _h in g[1]})
+
+
+class TestBotLangChoice(unittest.TestCase):
+    """BOT_LANG is asked in GROUPS so the language can be chosen at setup."""
+
+    def test_bot_lang_in_groups(self):
+        group_keys = {k for g in GROUPS for k, _r, _d, _h in g[1]}
+        self.assertIn("BOT_LANG", group_keys)
+
+    def test_ask_validates_choices(self):
+        with mock.patch("builtins.input", side_effect=["zz", "ru"]):
+            self.assertEqual(_ask("BOT_LANG", "desc", "", "en", True, choices=["en", "ru"]), "ru")
+
+    def test_ask_keeps_current_on_enter(self):
+        with mock.patch("builtins.input", return_value=""):
+            self.assertEqual(_ask("BOT_LANG", "desc", "en", "en", True, choices=["en", "ru"]), "en")
+
+    def test_choices_match_available(self):
+        self.assertIn("en", BOT_LANG_CHOICES)
 
 
 class TestStripInlineComment(unittest.TestCase):
