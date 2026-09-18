@@ -96,6 +96,8 @@
   "setup.optional_tag": "(необязательно)",
   "setup.prompt_current": "{name}: {hint} {tag} [текущее: {shown!r}]. Enter = оставить: ",
   "setup.prompt_empty": "{name}: {hint} {tag}. Enter = пропустить: ",
+  "setup.choices": "Доступно: {options}\n",
+  "setup.invalid_choice": "Выбери одно из: {options}",
   "setup.aborted": "\nПрервано. Ничего не сохранено.",
   "setup.bak_created": "   Создана резервная копия: {path}",
   "setup.written": "   Записан: {path}",
