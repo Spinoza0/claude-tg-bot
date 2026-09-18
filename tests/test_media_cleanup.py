@@ -1,8 +1,8 @@
-"""Юнит-тесты очистки скачанных вложений и удаления в корзину/навсегда.
+"""Unit tests for cleaning downloaded attachments and deleting to trash/forever.
 
-Проверяем: _env_bool (парсинг булевых настроек), _fmt_bytes (формат объёма),
-_dir_size, и /clearmedia (_clear_media) — счёт файлов/объёма и удаление по
-DELETE_MODE (в корзину или навсегда, через мок _delete_path).
+We check: _env_bool (boolean setting parsing), _fmt_bytes (volume format),
+_dir_size, and /clearmedia (_clear_media) — file/volume counting and deletion by
+DELETE_MODE (trash or forever, via a _delete_path mock).
 """
 
 import asyncio
@@ -21,7 +21,7 @@ from claude_tg_bot import commands, handlers, media  # noqa: E402
 
 
 class TestEnvBool(unittest.TestCase):
-    """_env_bool конвертирует строки env в bool."""
+    """_env_bool converts env strings to a bool."""
 
     def test_true_values(self):
         for v in ("1", "true", "yes", "on"):
@@ -33,7 +33,6 @@ class TestEnvBool(unittest.TestCase):
         os.environ.pop("TEST_BOOL", None)
 
     def test_default_when_empty(self):
-        # Если переменной нет — возвращаем default
         self.assertTrue(config._env_bool("NONEXISTENT_VAR_XYZ", True))
         self.assertFalse(config._env_bool("NONEXISTENT_VAR_XYZ", False))
 
@@ -64,7 +63,7 @@ class TestDirSize(unittest.TestCase):
 
 
 class TestClearMedia(unittest.TestCase):
-    """_clear_media: считает файлы/объём и удаляет по DELETE_MODE."""
+    """_clear_media: counts files/volume and deletes by DELETE_MODE."""
 
     def test_delete_to_trash(self):
         with tempfile.TemporaryDirectory() as d:
@@ -74,7 +73,6 @@ class TestClearMedia(unittest.TestCase):
             (media_dir / "a.jpg").write_bytes(b"x" * 1024)
             (media_dir / "b.mp4").write_bytes(b"y" * 2048)
 
-            # Мокаем _delete_path — проверяем, что вызван с каталогом и режимом
             deleted = []
             commands._delete_path = lambda p, mode="": deleted.append((p, mode))
             commands.config.DELETE_MODE = "trash"
@@ -90,11 +88,10 @@ class TestClearMedia(unittest.TestCase):
             target, mode = deleted[0]
             self.assertEqual(target, media_dir)
             self.assertEqual(mode, "trash")
-            self.assertIn("2", seen["msg"])  # 2 files
+            self.assertIn("2", seen["msg"])
             self.assertIn("to trash", seen["msg"])
 
     def test_silent_no_dir_no_reply(self):
-        # /clear при отсутствии каталога вложений: silent=True → никакого ответа.
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             seen = {}
@@ -102,10 +99,9 @@ class TestClearMedia(unittest.TestCase):
                 seen["msg"] = text
             commands._reply = fake_reply
             asyncio.run(commands._clear_media(None, str(root), sandbox=False, root=str(root), silent=True))
-            self.assertNotIn("msg", seen)  # ответа быть не должно
+            self.assertNotIn("msg", seen)
 
     def test_silent_empty_dir_deleted(self):
-        # /clear при пустом каталоге: silent=True → каталог удаляется + сообщение.
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             media_dir = root / ".claude_tg_bot_media"
@@ -117,13 +113,13 @@ class TestClearMedia(unittest.TestCase):
                 seen["msg"] = text
             commands._reply = fake_reply
             asyncio.run(commands._clear_media(None, str(root), sandbox=False, root=str(root), silent=True))
-            self.assertEqual(len(deleted), 1)      # empty folder was deleted
+            self.assertEqual(len(deleted), 1)
             self.assertEqual(deleted[0][0], media_dir)
-            self.assertIn("Empty", seen["msg"])    # message about deleting the empty folder
+            self.assertIn("Empty", seen["msg"])
 
 
 class TestMediaSize(unittest.TestCase):
-    """_media_size: считает файлы/объём скачанных вложений, ничего не удаляя."""
+    """_media_size: counts files/volume of downloaded attachments, deletes nothing."""
 
     def test_reports_count_and_size(self):
         with tempfile.TemporaryDirectory() as d:
@@ -140,9 +136,9 @@ class TestMediaSize(unittest.TestCase):
 
             asyncio.run(commands._media_size(None, str(root)))
 
-            self.assertIn("2", seen["msg"])       # 2 files
-            self.assertIn("3.0 KB", seen["msg"])  # 1+2 = 3 KB
-            self.assertNotIn("Deleted", seen["msg"])  # /mediasize deletes nothing
+            self.assertIn("2", seen["msg"])
+            self.assertIn("3.0 KB", seen["msg"])
+            self.assertNotIn("Deleted", seen["msg"])
 
     def test_empty_reports_none(self):
         with tempfile.TemporaryDirectory() as d:
@@ -156,12 +152,12 @@ class TestMediaSize(unittest.TestCase):
 
 
 class TestClearMediaRouting(unittest.TestCase):
-    """/clearmedia не должен попадать в на /clear (префиксный конфликт).
+    """/clearmedia must not route into /clear (prefix conflict).
 
-    Раньше проверка была text.startswith('/clear') — она ловила и `/clearmedia`,
-    который тоже начинается с `/clear`, и уводила его в on_chat (промпт claude),
-    а не в on_command. Отсюда «Unknown command». Проверяем, что теперь
-    маршрутизация точная.
+    Previously the check was text.startswith('/clear') — it caught `/clearmedia`
+    too, which also starts with `/clear`, and routed it into on_chat (the claude
+    prompt) instead of on_command. That produced "Unknown command". We verify the
+    routing is now exact.
     """
 
     def _msg(self, text):

@@ -1,4 +1,4 @@
-"""Юнит-тесты sessions.py: состояние пользователя и валидация имени проекта."""
+"""Unit tests for sessions.py: user state and project-name validation."""
 
 import sys
 import unittest
@@ -18,7 +18,7 @@ from claude_tg_bot.sessions import (  # noqa: E402
 
 
 class TestUserState(unittest.TestCase):
-    """Круговая сериализация и раздельное состояние обычного/агентского режимов."""
+    """Round-trip serialization and separate normal/sandbox mode state."""
 
     def test_round_trip(self):
         st = UserState(
@@ -39,7 +39,6 @@ class TestUserState(unittest.TestCase):
         st = UserState(user_id=1)
         st.set_active(sandbox=False, root="/normal/one", name="one")
         st.set_active(sandbox=True, root="/sandbox/foo", name="foo")
-        # Раздельные контексты
         self.assertEqual(st.get_active_root(sandbox=False), "/normal/one")
         self.assertEqual(st.get_active_root(sandbox=True), "/sandbox/foo")
         self.assertEqual(st.active_name(sandbox=False), "one")
@@ -47,35 +46,29 @@ class TestUserState(unittest.TestCase):
 
 
 class TestHasSession(unittest.TestCase):
-    """has_session: есть ли сессия в каталоге (для --continue по каталогу)."""
+    """has_session: whether a session exists in a directory (for --continue by directory)."""
 
     def test_empty_dir_false(self):
-        # Каталог, где нет ~/.claude/projects/<slug> (или он пуст) → False
         self.assertFalse(has_session(Path("/nonexistent/xyz-123")))
 
     def test_some_dir_returns_bool(self):
-        # Реальный каталог: должен вернуть bool (есть сессия или нет), не упасть.
         r = has_session(PROJECT_ROOT)
         self.assertIsInstance(r, bool)
 
     def test_slug_replaces_dot_with_dash(self):
-        # Claude составляет slug из абсолютного пути, заменяя '/' и '.' на '-'.
-        # Напр. /Users/sintyurin.ivan/... -> -Users-sintyurin-ivan-... (точка в
-        # имени пользователя становится дефисом, а ранее была '_' — из-за этого
-        # has_session искал не тот каталог и --continue не срабатывал).
-        d = claude_project_dir(Path("/Users/sintyurin.ivan/StudioProjects/x"))
+        # Claude builds a slug from the absolute path, replacing '/' and '.' with '-'.
+        # E.g. /Users/john.doe/... -> -Users-john-doe-... (the dot in the username
+        # becomes a dash; previously it was '_', so has_session looked in the wrong
+        # directory and --continue didn't trigger).
+        d = claude_project_dir(Path("/Users/john.doe/StudioProjects/x"))
         self.assertEqual(
             d.name,
-            "-Users-sintyurin-ivan-StudioProjects-x",
+            "-Users-john-doe-StudioProjects-x",
         )
 
 
 class TestFindLatestSession(unittest.TestCase):
-    """find_latest_session: отдаёт самый свежий .jsonl (для --resume)."""
-
-    def _mk(self, tmp: Path, names):
-        for n in names:
-            (tmp / n).touch()
+    """find_latest_session: returns the newest .jsonl (for --resume)."""
 
     def test_returns_none_when_empty(self):
         self.assertIsNone(find_latest_session(Path("/nonexistent/xyz-123")))
@@ -85,14 +78,12 @@ class TestFindLatestSession(unittest.TestCase):
         import os
         import time as _t
         d = claude_project_dir(PROJECT_ROOT)
-        # Пусть каталог реальный; создаём два файла с разным mtime.
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             (tmp / "old.jsonl").touch()
             (tmp / "new.jsonl").touch()
-            _t.sleep(0.01)  # чтобы mtime отличался
+            _t.sleep(0.01)  # so the mtimes differ
             os.utime(tmp / "new.jsonl", None)
-            # подменяем каталог сессий, чтобы не трогать реальный
             orig = _s.claude_project_dir
             _s.claude_project_dir = lambda cwd: tmp
             try:
@@ -102,7 +93,7 @@ class TestFindLatestSession(unittest.TestCase):
 
 
 class TestIsSafeProjectName(unittest.TestCase):
-    """Защита от path traversal через имя проекта."""
+    """Protection against path traversal via the project name."""
 
     def test_valid(self):
         for name in ("project", "my-project", "my_project", "v1.0", "A1_b2"):

@@ -1,8 +1,8 @@
-"""Юнит-тесты чистой логики бота (без Telegram/сети).
+"""Unit tests for the bot's pure logic (no Telegram/network).
 
-Покрываем только детерминированные функции: парсинг @helpbot, определение
-расширения вложения, отправку с ретраями, маршрутизацию вложений. Импортируем
-нужные модули из пакета claude_tg_bot.
+We cover only deterministic functions: @helpbot parsing, attachment extension
+detection, sending with retries, attachment routing. We import the needed
+modules from the claude_tg_bot package.
 """
 
 import asyncio
@@ -21,41 +21,36 @@ from claude_tg_bot import handlers, media, reply, sandbox  # noqa: E402
 
 
 class TestAgentParsing(unittest.TestCase):
-    """Парсинг сообщений @helpbot."""
+    """Parsing @helpbot messages."""
 
     @classmethod
     def setUpClass(cls):
-        # В тестовой среде SANDBOX_COMMAND может быть пуст (нет config.env).
-        # Задаём триггер явно, чтобы тестировать разбор @helpbot (см. config).
         sandbox.SANDBOX_PREFIX = "@helpbot"
 
     def test_is_sandbox_message_true(self):
         self.assertTrue(sandbox._is_sandbox_message("@helpbot"))
-        self.assertTrue(sandbox._is_sandbox_message("@helpbot курс доллара"))
+        self.assertTrue(sandbox._is_sandbox_message("@helpbot exchange rate"))
         self.assertTrue(sandbox._is_sandbox_message("  @helpbot /status"))
 
     def test_is_sandbox_message_false(self):
-        # Не путать с похожими строками и старым /agent
         self.assertFalse(sandbox._is_sandbox_message("@helpbotxyz"))
         self.assertFalse(sandbox._is_sandbox_message("@helpbotfoo bar"))
-        self.assertFalse(sandbox._is_sandbox_message("просто текст"))
+        self.assertFalse(sandbox._is_sandbox_message("just text"))
         self.assertFalse(sandbox._is_sandbox_message("/status"))
         self.assertFalse(sandbox._is_sandbox_message("/agent"))
         self.assertFalse(sandbox._is_sandbox_message(""))
 
     def test_strip_sandbox_prefix(self):
-        # Срезаем @helpbot и ВСЕ пробелы после него
-        self.assertEqual(sandbox._strip_sandbox_prefix("@helpbot курс"), "курс")
+        self.assertEqual(sandbox._strip_sandbox_prefix("@helpbot rate"), "rate")
         self.assertEqual(sandbox._strip_sandbox_prefix("@helpbot /status"), "/status")
-        self.assertEqual(sandbox._strip_sandbox_prefix("@helpbot   много пробелов"), "много пробелов")
-        self.assertEqual(sandbox._strip_sandbox_prefix("@helpbot\tтаб"), "таб")
-        # @helpbot без хвоста → пустая строка
+        self.assertEqual(sandbox._strip_sandbox_prefix("@helpbot   many spaces"), "many spaces")
+        self.assertEqual(sandbox._strip_sandbox_prefix("@helpbot\ttab"), "tab")
         self.assertEqual(sandbox._strip_sandbox_prefix("@helpbot"), "")
         self.assertEqual(sandbox._strip_sandbox_prefix("@helpbot   "), "")
 
 
 class _FakeMedia:
-    """Имитация объекта вложения с file_name/mime_type."""
+    """Fake attachment object with file_name/mime_type."""
 
     def __init__(self, file_name=None, mime_type=None):
         self.file_name = file_name
@@ -63,7 +58,7 @@ class _FakeMedia:
 
 
 class TestMediaExt(unittest.TestCase):
-    """Определение расширения вложения."""
+    """Attachment extension detection."""
 
     def test_extension_from_filename(self):
         self.assertEqual(media._media_ext(_FakeMedia("clip.mp4", "video/mp4")), ".mp4")
@@ -71,26 +66,21 @@ class TestMediaExt(unittest.TestCase):
         self.assertEqual(media._media_ext(_FakeMedia("song.MP3", "audio/mpeg")), ".mp3")
 
     def test_extension_from_mime(self):
-        # Нет file_name (как у Voice) — берём из mime_type
         self.assertEqual(media._media_ext(_FakeMedia(None, "video/webm")), ".webm")
         self.assertEqual(media._media_ext(_FakeMedia(None, "audio/ogg")), ".ogg")
         self.assertEqual(media._media_ext(_FakeMedia(None, "application/pdf")), ".pdf")
 
     def test_extension_default_bin(self):
-        # Нет ни file_name, ни известного mime → .bin
         self.assertEqual(media._media_ext(_FakeMedia(None, None)), ".bin")
 
     def test_extension_filename_without_dot(self):
-        # file_name без точки — откатываемся к mime
         self.assertEqual(media._media_ext(_FakeMedia("noext", "image/png")), ".png")
 
 
 class TestSniffImageExt(unittest.TestCase):
-    """Определение расширения изображения по магическим байтам."""
+    """Image extension detection by magic bytes."""
 
     def _write(self, data: bytes) -> Path:
-        # Временный файл, который удаляется сам после теста (иначе мусор
-        # sniff_*.tmp копится в /tmp).
         fd, name = tempfile.mkstemp(prefix="sniff_", suffix=".tmp")
         os.close(fd)
         p = Path(name)
@@ -120,7 +110,7 @@ class TestSniffImageExt(unittest.TestCase):
 
 
 class _FlakyMessage:
-    """Сообщение, у которого reply_text падает первые fails раз."""
+    """Message whose reply_text fails the first `fails` times."""
 
     def __init__(self, fails):
         self.fails = fails
@@ -136,28 +126,28 @@ class _FlakyMessage:
 
 
 class TestSendWithRetry(unittest.TestCase):
-    """Отправка ответа с повторными попытками."""
+    """Sending a reply with retries."""
 
     def test_success_after_transient_errors(self):
         m = _FlakyMessage(fails=2)
-        res = asyncio.run(reply._send_with_retry(m, "ответ", attempts=3, delay=0))
+        res = asyncio.run(reply._send_with_retry(m, "answer", attempts=3, delay=0))
         self.assertIsNotNone(res)
         self.assertEqual(m.calls, 3)
-        self.assertEqual(m.replied, "🤖 ответ")
+        self.assertEqual(m.replied, "🤖 answer")
 
     def test_all_fail_returns_none(self):
         m = _FlakyMessage(fails=99)
-        res = asyncio.run(reply._send_with_retry(m, "текст", attempts=2, delay=0))
+        res = asyncio.run(reply._send_with_retry(m, "text", attempts=2, delay=0))
         self.assertIsNone(res)
         self.assertEqual(m.calls, 2)
 
 
 class TestSplitRouting(unittest.TestCase):
-    """Раздельные обработчики (фото/видео/аудио/файл) маршрутизируются верно.
+    """Separate handlers (photo/video/audio/file) route correctly.
 
-    При вызове on_photo должно идти в _handle_attachment со sniff_ext=True,
-    а on_video/on_audio/on_document — со своим расширением из _media_ext.
-    Проверяем через делегирование в _handle_attachment (мокаем его).
+    on_photo should go to _handle_attachment with sniff_ext=True, while
+    on_video/on_audio/on_document use their own extension from _media_ext. We
+    verify this via delegation to _handle_attachment (mocked).
     """
 
     def _make_msg(self, photo=None, video=None, audio=None, voice=None, document=None):
@@ -185,7 +175,6 @@ class TestSplitRouting(unittest.TestCase):
         calls = self._mock_handle()
         m = self._make_msg(video=_FakeMedia("c.mp4", "video/mp4"))
         asyncio.run(handlers.on_video(None, m))
-        # _handle_attachment(client, msg, kind, ext, ...) → a[0]=(None,m,'видео','.mp4',...)
         self.assertEqual(calls[0][0][3], ".mp4")
 
     def test_audio_ext(self):
@@ -201,20 +190,17 @@ class TestSplitRouting(unittest.TestCase):
         self.assertEqual(calls[0][0][3], ".pdf")
 
     def test_video_note_as_video(self):
-        # Кружок (video_note) уходит как видео, ext .mp4 по умолчанию
         calls = self._mock_handle()
         m = SimpleNamespace(video_note=_FakeMedia(None, "video/mp4"),
                             photo=None, video=None, audio=None, voice=None,
                             document=None, caption="")
         asyncio.run(handlers.on_video_note(None, m))
-        # _handle_attachment(client, msg, kind, ext, ...) → ext = a[0][3]
         self.assertEqual(calls[0][0][3], ".mp4")
-        # kind = 'video message (circle)'
         self.assertEqual(calls[0][0][2], "video message (circle)")
 
 
 class TestTextualMediaPrompt(unittest.TestCase):
-    """_textual_media_prompt формирует описание для опроса/гео/контакта."""
+    """_textual_media_prompt builds a description for a poll/geo/contact."""
 
     def _msg(self, **kw):
         d = dict(photo=None, video=None, video_note=None, audio=None, voice=None,
@@ -229,17 +215,17 @@ class TestTextualMediaPrompt(unittest.TestCase):
                                options=[SimpleNamespace(text=o) for o in options])
 
     def test_poll(self):
-        p = self._poll("Как дела?", ["Отлично", "Норм"])
+        p = self._poll("How are you?", ["Great", "Fine"])
         prompt = media._textual_media_prompt(self._msg(poll=p))
-        self.assertIn("Как дела?", prompt)
-        self.assertIn("Отлично", prompt)
-        self.assertIn("Норм", prompt)
+        self.assertIn("How are you?", prompt)
+        self.assertIn("Great", prompt)
+        self.assertIn("Fine", prompt)
 
     def test_contact(self):
-        c = SimpleNamespace(first_name="Иван", last_name="Иванов", phone_number="+79991234567")
+        c = SimpleNamespace(first_name="John", last_name="Doe", phone_number="+12345678900")
         prompt = media._textual_media_prompt(self._msg(contact=c))
-        self.assertIn("Иван", prompt)
-        self.assertIn("79991234567", prompt)
+        self.assertIn("John", prompt)
+        self.assertIn("12345678900", prompt)
 
     def test_location(self):
         loc = SimpleNamespace(latitude=55.75, longitude=37.61)
@@ -251,7 +237,7 @@ class TestTextualMediaPrompt(unittest.TestCase):
 
 
 class TestStickerAsFile(unittest.TestCase):
-    """Стикер уходит как файл-вложение в claude (а не «не могу обработать»)."""
+    """A sticker is sent as a file attachment to claude (not "can't process")."""
 
     def test_sticker_routes_to_attachment(self):
         calls = []
@@ -266,7 +252,6 @@ class TestStickerAsFile(unittest.TestCase):
                             caption="")
         asyncio.run(handlers.on_sticker(None, m))
         self.assertEqual(len(calls), 1)
-        # _handle_attachment(client, msg, kind, ext, ...) → ext = a[0][3]
         self.assertEqual(calls[0][0][3], ".webp")
 
 

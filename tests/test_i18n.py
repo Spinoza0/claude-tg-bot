@@ -1,8 +1,8 @@
-"""Юнит-тесты i18n: загрузка языкового файла, фолбэк, переключение на лету.
+"""Unit tests for i18n: language-file loading, fallback, runtime switch.
 
-Осторожно с глобальным состоянием: i18n инициализируется лениво и кэширует
-словарь. Каждый тест пересоздаёт модуль и восстанавливает окружение (BOT_LANG
-без побочных эффектов для последующих тестовых файлов).
+Careful with global state: i18n initializes lazily and caches a dictionary.
+Each test re-creates the module and restores the environment (BOT_LANG) without
+side effects on subsequent test files.
 """
 
 import importlib
@@ -16,7 +16,7 @@ from claude_tg_bot import i18n
 
 
 def _hard_reset(value=None):
-    """Сбросить живую инициализацию i18n и задать BOT_LANG (None = убрать)."""
+    """Reset live i18n init and set BOT_LANG (None = unset)."""
     if value is None:
         os.environ.pop("BOT_LANG", None)
     else:
@@ -35,12 +35,11 @@ class I18nTestCase(unittest.TestCase):
         _hard_reset(None)
 
     def tearDown(self):
-        # Очищаем, чтобы не влиять на следующие тестовые файлы в том же процессе.
         _hard_reset(None)
 
 
 class TestLangResolution(I18nTestCase):
-    """Разрешение языка из BOT_LANG и дефолт при пустом/неизвестном."""
+    """Language resolution from BOT_LANG and the default when empty/unknown."""
 
     def test_default_when_unset(self):
         m = _hard_reset(None)
@@ -60,7 +59,7 @@ class TestLangResolution(I18nTestCase):
 
 
 class TestRuntimeSwitch(I18nTestCase):
-    """set_lang меняет язык на лету, невалидный код сохраняет текущий."""
+    """set_lang switches the language on the fly; an invalid code keeps the current."""
 
     def test_switch_to_ru(self):
         before = i18n.t("cmd.no_project")
@@ -73,11 +72,10 @@ class TestRuntimeSwitch(I18nTestCase):
     def test_invalid_keeps_current(self):
         self.assertEqual(i18n.current_lang(), "en")
         code = i18n.set_lang("xx")
-        self.assertEqual(code, "en")       # не сменился
+        self.assertEqual(code, "en")       # didn't change
         self.assertEqual(i18n.current_lang(), "en")
 
     def test_missing_key_falls_back_to_key(self):
-        # Несуществующий ключ возвращает сам ключ (не падает).
         self.assertEqual(i18n.t("no.such.key"), "no.such.key")
 
 

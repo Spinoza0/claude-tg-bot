@@ -1,4 +1,4 @@
-"""Тесты логирования (issue #12): флаг --log, уровни, файловый хендлер."""
+"""Logging tests (issue #12): the --log flag, levels, the file handler."""
 
 import logging
 import tempfile
@@ -10,7 +10,7 @@ from claude_tg_bot import log
 
 
 class TestParseLogFlag(unittest.TestCase):
-    """parse_log_flag разбирает флаг --log[=уровень] из argv."""
+    """parse_log_flag parses the --log[=level] flag from argv."""
 
     def test_no_flag_disabled(self):
         enabled, level = log.parse_log_flag(["python", "-m", "claude_tg_bot"])
@@ -49,7 +49,7 @@ class TestParseLogFlag(unittest.TestCase):
 
 
 class TestParseLevel(unittest.TestCase):
-    """parse_level переводит строку в уровень logging."""
+    """parse_level converts a string to a logging level."""
 
     def test_none_is_error(self):
         self.assertEqual(log.parse_level(None), logging.ERROR)
@@ -66,7 +66,7 @@ class TestParseLevel(unittest.TestCase):
 
 
 class TestSetupLogging(unittest.TestCase):
-    """setup_logging создаёт файл и вешает FileHandler."""
+    """setup_logging creates a file and attaches a FileHandler."""
 
     def test_creates_file_and_handler(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -75,17 +75,15 @@ class TestSetupLogging(unittest.TestCase):
             logger = logging.getLogger("claude_tg_bot")
             self.assertTrue(log_path.exists())
             self.assertEqual(returned, log_path)
-            # Хендлер добавлен к логгеру
             self.assertTrue(any(isinstance(h, logging.FileHandler) for h in logger.handlers))
-            # Пишется сообщение
-            logger.info("тест-сообщение")
+            logger.info("test-message")
             logger.handlers[-1].flush()
             content = log_path.read_text(encoding="utf-8")
-            self.assertIn("тест-сообщение", content)
+            self.assertIn("test-message", content)
 
 
 class TestOldLogsAndCleanup(unittest.TestCase):
-    """old_logs и maybe_cleanup_old_logs."""
+    """old_logs and maybe_cleanup_old_logs."""
 
     def _make_logs(self, tmp, names=("claude-tg-bot-2026-09-15.log",)):
         d = Path(tmp)

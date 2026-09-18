@@ -1,8 +1,8 @@
-"""Юнит-тесты единого статуса в консоли (перехват логов Pyrogram).
+"""Unit tests for the unified console status (Pyrogram log interception).
 
-Проверяем, что перехватчик запоминает последнюю ошибку и НЕ штампует её в
-stderr, а статус-луп показывает «✗ Ошибка» при свежей ошибке и «● Работаю»
-когда она устарела.
+We check that the interceptor remembers the last error and does NOT stamp it to
+stderr, and that the status loop shows "✗ Error" for a fresh error and "● Working"
+when it's stale.
 """
 
 import asyncio
@@ -22,7 +22,7 @@ def _record(msg: str, level: int = logging.ERROR) -> logging.LogRecord:
 
 
 class TestStatusFilter(unittest.TestCase):
-    """Перехватчик: хранит последнюю ошибку, слабые записи игнорирует."""
+    """Interceptor: stores the last error, ignores weak records."""
 
     def test_captures_error(self):
         sf = st._StatusFilter()
@@ -47,7 +47,7 @@ class TestStatusFilter(unittest.TestCase):
 
 
 class TestFriendly(unittest.TestCase):
-    """Преобразование сырых сообщений Pyrogram в понятный текст."""
+    """Converting raw Pyrogram messages into readable text."""
 
     def test_timeout(self):
         self.assertIn("no response", st._friendly('Retrying "updates.GetState" due to: Request timed out'))
@@ -62,16 +62,13 @@ class TestFriendly(unittest.TestCase):
         self.assertIn("Telegram", st._friendly("An error occurred while Telegram was intercommunicating with DC4"))
 
     def test_unknown_short(self):
-        # Незнакомое короче 120 — как есть
-        self.assertEqual(st._friendly("что-то неясное"), "что-то неясное")
+        self.assertEqual(st._friendly("something unclear"), "something unclear")
 
 
 class TestStatusLoop(unittest.TestCase):
-    """Статус-луп печатает «✗ Ошибка» / «● Работаю» при смене состояния."""
+    """The status loop prints "✗ Error" / "● Working" on state change."""
 
     def setUp(self):
-        # Сбрасываем глобальное состояние статуса, чтобы тесты не зависели от
-        # остатков предыдущих (общий _STATUS_FILTER и run-ошибка).
         st._STATUS_FILTER._last_error = None
         st._STATUS_FILTER._last_error_ts = 0.0
         st._report_run_error("")
@@ -90,11 +87,10 @@ class TestStatusLoop(unittest.TestCase):
         printed = asyncio.run(scenario())
         self.assertTrue(printed)
         last = printed[-1]
-        # Блок из двух строк: «Working» (без 🟢) + ❌ Error (последняя).
         self.assertEqual(len(last), 2)
         self.assertIn("Working", last[0])
-        self.assertNotIn("🟢", last[0])          # проблема — нет 🟢 у работы
-        self.assertIn("❌", last[1])             # ошибка актуальна — с ❌
+        self.assertNotIn("🟢", last[0])          # problem — no 🟢 on Working
+        self.assertIn("❌", last[1])             # error is fresh — with ❌
         self.assertIn("resolve host", last[1])
 
     def test_returns_ok_when_stale(self):
@@ -102,7 +98,7 @@ class TestStatusLoop(unittest.TestCase):
             printed = []
             st._draw_status = lambda lines: printed.append(lines)
             st._STATUS_FILTER.emit(_record("old error"))
-            st._STATUS_FILTER._last_error_ts = 0  # «давно» — устарело
+            st._STATUS_FILTER._last_error_ts = 0  # "long ago" — stale
             stop = asyncio.Event()
             task = asyncio.create_task(st._status_loop(stop))
             await asyncio.sleep(0.35)
@@ -112,23 +108,19 @@ class TestStatusLoop(unittest.TestCase):
         printed = asyncio.run(scenario())
         self.assertTrue(printed)
         last = printed[-1]
-        # Сейчас всё хорошо: 🟢 у «Working», последняя ошибка — без ❌.
         self.assertEqual(len(last), 2)
-        self.assertIn("🟢", last[0])             # норма — работа с 🟢
+        self.assertIn("🟢", last[0])             # ok — Working with 🟢
         self.assertIn("Error", last[1])
-        self.assertNotIn("❌", last[1])          # ошибка устарела — без ❌
+        self.assertNotIn("❌", last[1])          # error stale — no ❌
 
 
 class TestRunError(unittest.TestCase):
-    """Ошибка запуска Claude отражается в консольном статусе (отвал модели)."""
+    """A Claude launch error is reflected in the console status (model drop)."""
 
     def test_is_run_error_by_exit_code_and_markers(self):
-        # exit_code != 0 — ошибка
         self.assertTrue(st._is_run_error(type("R", (), {"exit_code": 1, "text": "..."})()))
-        # текст с маркером обёртки — ошибка
         self.assertTrue(st._is_run_error(type("R", (), {"exit_code": 0, "text": "API Error: 502 ..."})()))
-        # нормальный ответ — не ошибка
-        self.assertFalse(st._is_run_error(type("R", (), {"exit_code": 0, "text": "Курс доллара..."})()))
+        self.assertFalse(st._is_run_error(type("R", (), {"exit_code": 0, "text": "Exchange rate ..."})()))
 
     def test_report_and_snapshot(self):
         st._report_run_error("API Error: 502")
@@ -137,7 +129,7 @@ class TestRunError(unittest.TestCase):
         self.assertGreater(ts, 0)
 
     def test_status_loop_shows_run_error(self):
-        st._STATUS_FILTER._last_error = None  # связь с Telegram в норме
+        st._STATUS_FILTER._last_error = None  # Telegram link is fine
 
         async def scenario():
             printed = []
@@ -152,7 +144,6 @@ class TestRunError(unittest.TestCase):
         printed = asyncio.run(scenario())
         self.assertTrue(printed)
         last = printed[-1]
-        # Свежая run-ошибка → без 🟢, с ❌.
         self.assertEqual(len(last), 2)
         self.assertNotIn("🟢", last[0])
         self.assertIn("❌", last[1])
@@ -160,33 +151,30 @@ class TestRunError(unittest.TestCase):
 
 
 class TestModelUnavailable(unittest.TestCase):
-    """_is_model_unavailable: определяет недоступность модели (issue #5)."""
+    """_is_model_unavailable: determines model unavailability (issue #5)."""
 
     def _res(self, text, exit_code=0):
         return type("R", (), {"text": text, "exit_code": exit_code})()
 
     def test_model_unavailable_markers(self):
-        # Классические признаки недоступности модели/провайдера
         self.assertTrue(st._is_model_unavailable(self._res("API Error: 502 Cannot connect ...")))
         self.assertTrue(st._is_model_unavailable(self._res("Cannot connect to host")))
         self.assertTrue(st._is_model_unavailable(self._res("... 503 Service Unavailable")))
         self.assertTrue(st._is_model_unavailable(self._res("model not found")))
 
     def test_normal_answer_not_unavailable(self):
-        # Обычный ответ модели — не ошибка доступности
-        self.assertFalse(st._is_model_unavailable(self._res("Курс доллара на завтра...")))
+        self.assertFalse(st._is_model_unavailable(self._res("Exchange rate for tomorrow...")))
         self.assertFalse(st._is_model_unavailable(self._res("")))
 
     def test_other_error_not_unavailable(self):
-        # Сбой запуска / длинный промпт — это НЕ недоступность модели
-        self.assertFalse(st._is_model_unavailable(self._res("⚠️ Ошибка: Промпт слишком длинный")))
+        self.assertFalse(st._is_model_unavailable(self._res("Error: prompt too long")))
 
 
 class TestDrawStatus(unittest.TestCase):
-    """_draw_status перерисовывает блок на месте, не накапливая каскад строк."""
+    """_draw_status redraws the block in place, not accumulating a cascade of lines."""
 
     def _draw_sequence(self, states):
-        """Прогнать серию _draw_status, вернуть склеенную ANSI-последовательность."""
+        """Run a series of _draw_status, return the concatenated ANSI sequence."""
         buf: list[str] = []
         st._use_color = lambda: True
         orig_write = sys.stdout.write
@@ -204,11 +192,8 @@ class TestDrawStatus(unittest.TestCase):
             ["\x1b[32mWorking [t2]", "\x1b[31m❌ Error: failure [t2]\x1b[0m"],
             ["\x1b[32mWorking [t3]", "\x1b[31m❌ Error: failure [t3]\x1b[0m"],
         ])
-        # В последующих вызовах обязан быть подъём \033[<n>F и затирание \033[J.
         self.assertIn("\x1b[J", out)
-        # Подъём происходит на высоту прошлого блока (2 строки) — \033[2F.
         self.assertIn("\x1b[2F", out)
-        # Каждый повторный перерисовывает, а не дописывает — значит каскада нет.
         self.assertGreaterEqual(out.count("\x1b[J"), 2)
 
     def test_prev_lines_tracks_height(self):
