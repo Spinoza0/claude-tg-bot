@@ -92,8 +92,8 @@ class TestModelSwitchNotify(unittest.TestCase):
         self.assertIsNone(calls[0]["command_args"])                      # база
         self.assertEqual(calls[1]["command_args"], "--provider cline-pass")  # alt
         # В Telegram ушло и уведомление о переключении, и о восстановлении.
-        self.assertTrue(any("переключаюсь на запасной" in s for s in sentry))
-        self.assertTrue(any("Запасная модель ответила" in s for s in sentry))
+        self.assertTrue(any("switching to the fallback" in s for s in sentry))
+        self.assertTrue(any("fallback model responded" in s for s in sentry))
 
     def test_no_switch_notification_when_alt_unset(self):
         # Без COMMAND_ARGS_ALTERNATIVE бот НЕ переключается и не шлёт уведомление.
@@ -108,8 +108,8 @@ class TestModelSwitchNotify(unittest.TestCase):
                 return r
             calls, sentry = asyncio.run(scenario())
         # Смена модели не происходила — уведомлений о запасной модели нет.
-        self.assertFalse(any("Переключаюсь на запасной" in s for s in sentry))
-        self.assertFalse(any("Запасная модель ответила" in s for s in sentry))
+        self.assertFalse(any("switching to the fallback" in s for s in sentry))
+        self.assertFalse(any("fallback model responded" in s for s in sentry))
 
 
 if __name__ == "__main__":

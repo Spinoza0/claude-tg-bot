@@ -50,13 +50,13 @@ class TestFriendly(unittest.TestCase):
     """Преобразование сырых сообщений Pyrogram в понятный текст."""
 
     def test_timeout(self):
-        self.assertIn("нет ответа", st._friendly('Retrying "updates.GetState" due to: Request timed out'))
+        self.assertIn("no response", st._friendly('Retrying "updates.GetState" due to: Request timed out'))
 
     def test_gaierror(self):
-        self.assertIn("разрешить хост", st._friendly("Connection failed: gaierror [Errno 8] nodename"))
+        self.assertIn("resolve host", st._friendly("Connection failed: gaierror [Errno 8] nodename"))
 
     def test_connection(self):
-        self.assertIn("Нет соединения", st._friendly("Connection failed: Connection reset"))
+        self.assertIn("No connection", st._friendly("Connection failed: Connection reset"))
 
     def test_interdc(self):
         self.assertIn("Telegram", st._friendly("An error occurred while Telegram was intercommunicating with DC4"))
@@ -90,12 +90,12 @@ class TestStatusLoop(unittest.TestCase):
         printed = asyncio.run(scenario())
         self.assertTrue(printed)
         last = printed[-1]
-        # Блок из двух строк: «Работаю» (без 🟢) + ❌ Ошибка (последняя).
+        # Блок из двух строк: «Working» (без 🟢) + ❌ Error (последняя).
         self.assertEqual(len(last), 2)
-        self.assertIn("Работаю", last[0])
+        self.assertIn("Working", last[0])
         self.assertNotIn("🟢", last[0])          # проблема — нет 🟢 у работы
         self.assertIn("❌", last[1])             # ошибка актуальна — с ❌
-        self.assertIn("разрешить хост", last[1])
+        self.assertIn("resolve host", last[1])
 
     def test_returns_ok_when_stale(self):
         async def scenario():
@@ -112,10 +112,10 @@ class TestStatusLoop(unittest.TestCase):
         printed = asyncio.run(scenario())
         self.assertTrue(printed)
         last = printed[-1]
-        # Сейчас всё хорошо: 🟢 у «Работаю», последняя ошибка — без ❌.
+        # Сейчас всё хорошо: 🟢 у «Working», последняя ошибка — без ❌.
         self.assertEqual(len(last), 2)
         self.assertIn("🟢", last[0])             # норма — работа с 🟢
-        self.assertIn("Ошибка", last[1])
+        self.assertIn("Error", last[1])
         self.assertNotIn("❌", last[1])          # ошибка устарела — без ❌
 
 
@@ -200,9 +200,9 @@ class TestDrawStatus(unittest.TestCase):
 
     def test_redraw_clears_previous_block(self):
         out = self._draw_sequence([
-            ["\x1b[32mРаботаю [t1]"],
-            ["\x1b[32mРаботаю [t2]", "\x1b[31m❌ Ошибка: сбой [t2]\x1b[0m"],
-            ["\x1b[32mРаботаю [t3]", "\x1b[31m❌ Ошибка: сбой [t3]\x1b[0m"],
+            ["\x1b[32mWorking [t1]"],
+            ["\x1b[32mWorking [t2]", "\x1b[31m❌ Error: failure [t2]\x1b[0m"],
+            ["\x1b[32mWorking [t3]", "\x1b[31m❌ Error: failure [t3]\x1b[0m"],
         ])
         # В последующих вызовах обязан быть подъём \033[<n>F и затирание \033[J.
         self.assertIn("\x1b[J", out)
@@ -217,11 +217,11 @@ class TestDrawStatus(unittest.TestCase):
         orig = sys.stdout.write
         try:
             sys.stdout.write = buf.append
-            st._draw_status(["\x1b[32mРаботаю [t1]"])
+            st._draw_status(["\x1b[32mWorking [t1]"])
             self.assertEqual(st._STATUS_PREV_LINES, 1)
-            st._draw_status(["\x1b[32mРаботаю [t2]", "❌ Ошибка [t2]"])
+            st._draw_status(["\x1b[32mWorking [t2]", "❌ Error [t2]"])
             self.assertEqual(st._STATUS_PREV_LINES, 2)
-            st._draw_status(["\x1b[32mРаботаю [t3]", "❌ Ошибка [t3]"])
+            st._draw_status(["\x1b[32mWorking [t3]", "❌ Error [t3]"])
             self.assertEqual(st._STATUS_PREV_LINES, 2)
         finally:
             sys.stdout.write = orig

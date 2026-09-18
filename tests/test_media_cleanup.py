@@ -40,16 +40,16 @@ class TestEnvBool(unittest.TestCase):
 
 class TestFmtBytes(unittest.TestCase):
     def test_bytes(self):
-        self.assertEqual(media._fmt_bytes(512), "512 Б")
+        self.assertEqual(media._fmt_bytes(512), "512 B")
 
     def test_kb(self):
-        self.assertEqual(media._fmt_bytes(5 * 1024), "5.0 КБ")
+        self.assertEqual(media._fmt_bytes(5 * 1024), "5.0 KB")
 
     def test_mb(self):
-        self.assertEqual(media._fmt_bytes(int(1.3 * 1024 * 1024)), "1.3 МБ")
+        self.assertEqual(media._fmt_bytes(int(1.3 * 1024 * 1024)), "1.3 MB")
 
     def test_gb(self):
-        self.assertEqual(media._fmt_bytes(int(2.1 * 1024**3)), "2.1 ГБ")
+        self.assertEqual(media._fmt_bytes(int(2.1 * 1024**3)), "2.1 GB")
 
 
 class TestDirSize(unittest.TestCase):
@@ -90,8 +90,8 @@ class TestClearMedia(unittest.TestCase):
             target, mode = deleted[0]
             self.assertEqual(target, media_dir)
             self.assertEqual(mode, "trash")
-            self.assertIn("2", seen["msg"])  # 2 файла
-            self.assertIn("в корзину", seen["msg"])
+            self.assertIn("2", seen["msg"])  # 2 files
+            self.assertIn("to trash", seen["msg"])
 
     def test_silent_no_dir_no_reply(self):
         # /clear при отсутствии каталога вложений: silent=True → никакого ответа.
@@ -117,9 +117,9 @@ class TestClearMedia(unittest.TestCase):
                 seen["msg"] = text
             commands._reply = fake_reply
             asyncio.run(commands._clear_media(None, str(root), sandbox=False, root=str(root), silent=True))
-            self.assertEqual(len(deleted), 1)      # пустой каталог удалён
+            self.assertEqual(len(deleted), 1)      # empty folder was deleted
             self.assertEqual(deleted[0][0], media_dir)
-            self.assertIn("пуст", seen["msg"])     # сообщение про удаление пустого каталога
+            self.assertIn("Empty", seen["msg"])    # message about deleting the empty folder
 
 
 class TestMediaSize(unittest.TestCase):
@@ -140,9 +140,9 @@ class TestMediaSize(unittest.TestCase):
 
             asyncio.run(commands._media_size(None, str(root)))
 
-            self.assertIn("2", seen["msg"])       # 2 файла
-            self.assertIn("3.0 КБ", seen["msg"])  # 1+2 = 3 КБ
-            self.assertNotIn("Удалено", seen["msg"])  # /mediasize ничего не удаляет
+            self.assertIn("2", seen["msg"])       # 2 files
+            self.assertIn("3.0 KB", seen["msg"])  # 1+2 = 3 KB
+            self.assertNotIn("Deleted", seen["msg"])  # /mediasize deletes nothing
 
     def test_empty_reports_none(self):
         with tempfile.TemporaryDirectory() as d:
@@ -152,7 +152,7 @@ class TestMediaSize(unittest.TestCase):
                 seen["msg"] = text
             commands._reply = fake_reply
             asyncio.run(commands._media_size(None, str(root)))
-            self.assertIn("Нет скачанных вложений", seen["msg"])
+            self.assertIn("No downloaded attachments", seen["msg"])
 
 
 class TestClearMediaRouting(unittest.TestCase):

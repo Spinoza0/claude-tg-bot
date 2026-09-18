@@ -209,8 +209,8 @@ class TestSplitRouting(unittest.TestCase):
         asyncio.run(handlers.on_video_note(None, m))
         # _handle_attachment(client, msg, kind, ext, ...) → ext = a[0][3]
         self.assertEqual(calls[0][0][3], ".mp4")
-        # kind = 'видео-кружок'
-        self.assertEqual(calls[0][0][2], "видео-кружок")
+        # kind = 'video message (circle)'
+        self.assertEqual(calls[0][0][2], "video message (circle)")
 
 
 class TestTextualMediaPrompt(unittest.TestCase):
