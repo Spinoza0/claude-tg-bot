@@ -1,220 +1,239 @@
-# AGENTS.md — правила работы с репозиторием claude-tg-bot
+# AGENTS.md — rules for working with the claude-tg-bot repository
 
-Этот файл — обязательные инструкции для AI-агентов (Claude и др.),
-работающих с проектом. Главная цель: **никогда не допустить утечки секретов
-в git-историю репозитория.** Соблюдай правила всегда, они важнее удобства.
+This file is the mandatory instructions for AI agents (Claude and others) working
+with the project. The main goal: **never let secrets leak into the repository's
+git history.** Follow the rules at all times — they matter more than convenience.
 
-## 🚨 Критично: секреты, которые НИКОГДА не должны попасть в git
+## Project language
 
-В этом проекте есть реальные данные, которые нельзя коммитить:
+The project is maintained in **English**. Write code comments, docstrings,
+commit messages, and documentation in **English**. User-facing strings are not
+hardcoded in English — they are pulled from the locale files (see the bilingual
+note below).
 
-| Файл / данные | Что это | Статус |
+## 🚨 Critical: secrets that must NEVER appear in git
+
+This project holds real data that must not be committed:
+
+| File / data | What it is | Status |
 |---|---|---|
-| `config.env` | Реальные настройки: API_ID, API_HASH, PHONE, **MT_PROXY (secret)**, ALLOWED_USERS | ❌ НЕ коммитить |
-| `claude-tg-bot.session` | Авторизация MTProto-клиента (вход в Telegram) | ❌ НЕ коммитить |
-| `state.json` | Состояние сессий пользователей | ❌ НЕ коммитить |
-| `MT_PROXY` secret | Ключ доступа к MTProto-прокси | ❌ НИКОГДА не публиковать |
+| `config.env` | Real settings: API_ID, API_HASH, PHONE, **MT_PROXY (secret)**, ALLOWED_USERS | ❌ Do NOT commit |
+| `claude-tg-bot.session` | MTProto-client authorization (Telegram login) | ❌ Do NOT commit |
+| `state.json` | User session state | ❌ Do NOT commit |
+| `MT_PROXY` secret | Access key to the MTProto proxy | ❌ NEVER publish |
 
-`config.env.example` — **ЕДИНСТВЕННЫЙ** файл конфигурации, который можно
-коммитить. В нём должны быть **только фейковые данные** (плейсхолдеры),
-никакого реального хоста прокси, секрета или твоего пути.
+`config.env.example` — the **ONLY** configuration file that may be committed.
+It must contain **only fake data** (placeholders), no real proxy host, secret,
+or your path.
 
-## Обязательные правила
+## Mandatory rules
 
-### 1. Никогда не используй `git add -A` / `git add --all`
-`git add -A` стейджит весь рабочий каталог и может случайно добавить
-`config.env`, `.session`, логи. Вместо этого добавляй **конкретные файлы**:
+### 1. Never use `git add -A` / `git add --all`
+`git add -A` stages the whole working directory and can accidentally add
+`config.env`, `.session`, logs. Instead add **specific files**:
 ```bash
 git add claude_tg_bot/ tests/ lib/ README.md AGENTS.md claude-tg-bot.sh setup.sh config.env.example requirements.txt
 ```
 
-### 2. Перед каждым коммитом — проверь, что стейджедено
-Обязательно выполни и просмотри вывод:
+### 2. Before every commit — check what is staged
+Always run and review the output:
 ```bash
 git status --short
-git diff --cached --name-only   # убедись: нет config.env, *.session, state.json
+git diff --cached --name-only   # make sure: no config.env, *.session, state.json
 ```
-Если в выводе есть что-то из запрещённого — **остановись** и убери из индекса:
+If the output contains anything forbidden — **stop** and remove it from the index:
 ```bash
-git reset <файл>
+git reset <file>
 ```
 
-### 3. Проверяй наличие секретов во ВСЕХ файлах репозитория
-Перед пушем прогнал по всем файлам, которые попадут в git:
+### 3. Check for secrets in ALL repository files
+Before pushing, run it over every file that will go into git:
 ```bash
 git ls-files | xargs grep -lE \
   "sk-ant-|tg://proxy|&secret=[0-9a-f]{8,}" \
   2>/dev/null
 ```
-Любое совпадение (`tg://proxy`, `secret=`, `sk-ant-`) — значит в репо мог
-утечь секрет. **Остановись** и проверь файл до коммита. Также проверь, что в
-файлах нет реального user_id, путей пользователя или фамилии — используй
-только фейковые плейсхолдеры.
+Any match (`tg://proxy`, `secret=`, `sk-ant-`) means a secret could have leaked
+into the repo. **Stop** and check the file before committing. Also ensure the
+files don't contain a real user_id, user paths or surname — use only fake
+placeholders.
 
-### 4. Не пиши реальные значения в комментарии/код/README
-Даже «для примера» в комментарии нельзя вставлять реальные хост прокси,
-секрет, user_id или путь пользователя. Только фейки: `example.example.com`,
-`0000...`, `/home/username/...`.
+### 4. Don't write real values into comments/code/README
+Even "for example", a comment must not contain a real proxy host, secret,
+user_id, or user path. Only fakes: `example.example.com`, `0000...`,
+`/home/username/...`.
 
-### 5. Комментарии в коде — только там, где разъясняют непонятное
-Не пиши комментарии «просто так»: код должен читаться и без них. Убирай
-комментарии, которые пересказывают, что и так видно из кода (например
-`# сохраняем значение`). Оставляй только те, что поясняют неочевидную
-ситуацию: почему именно так, обход граничного случая/ошибки, связь с внешним
-поведением (например, «Claude сам не подхватывает последнюю сессию в -p — мы
-передаём --continue явно»). Стремись, чтобы имя функции/переменной само
-объясняло смысл, а комментарий был вторичным.
+### 5. Comments in code — only where they explain the non-obvious
+Don't write comments "just because": the code should read fine without them.
+Remove comments that restate what's visible from the code (e.g. `# save the
+value`). Keep only those that explain a non-obvious situation: why exactly this
+way, a workaround for an edge case/error, a link to external behavior (e.g.
+"Claude doesn't pick up the last session in -p by itself — we pass --continue
+explicitly"). Aim for the function/variable name to convey the meaning itself,
+with the comment being secondary.
 
-### 6. Никогда не делай `git push --force` без явного согласия
-Форс-пуш переписывает историю. Если он нужен — получи явное подтверждение
-пользователя. Предпочитай `--force-with-lease` (но он тоже требует явного
-разрешения в этой среде).
+### 6. Never `git push --force` without explicit consent
+Force-push rewrites history. If needed — get explicit user approval. Prefer
+`--force-with-lease` (but it also requires explicit permission in this
+environment).
 
-### 6. Никогда не редактируй `config.env` и не выводи его содержимое целиком
-`config.env` — реальные секреты. Не открывай его в ответах пользователю и не
-копируй значение MT_PROXY/secret в чат, сообщения, или документацию.
+### 6. Never edit `config.env` or print its full content
+`config.env` holds real secrets. Do not open it in replies to the user, and do
+not copy the MT_PROXY/secret value into chat, messages, or documentation.
 
-## Что разрешено коммитить
+## What may be committed
 
-- Исходный код: весь пакет `claude_tg_bot/` (модули: `config`, `client`, `handlers`,
-  `commands`, `media`, `sandbox`, `status`, `reply`, `access`, `process`, `retry`,
-  `runner`, `sessions`, `setup`, `log`, `version`, `__main__`)
-- Скрипты: `claude-tg-bot.sh` (запуск), `setup.sh` (настройка) — оба используют
-  общий bash-модуль `lib/env.sh` (выбор Python + venv + зависимости).
-- Запуск: `claude-tg-bot.sh`; настройка: `setup.sh`
-- Конфиг-пример: `config.env.example` (только фейки!)
-- Документация: `README.md`, `AGENTS.md`
+- Source code: the whole `claude_tg_bot/` package (modules: `config`, `client`,
+  `handlers`, `commands`, `media`, `sandbox`, `status`, `reply`, `access`,
+  `process`, `retry`, `runner`, `sessions`, `setup`, `log`, `version`, `__main__`)
+- Scripts: `claude-tg-bot.sh` (launch), `setup.sh` (setup) — both use the shared
+  bash module `lib/env.sh` (Python choice + venv + dependencies).
+- Launch: `claude-tg-bot.sh`; setup: `setup.sh`
+- Config example: `config.env.example` (fakes only!)
+- Docs: `README.md`, `AGENTS.md`
 - `requirements.txt`, `.gitignore`
 
-## Что запрещено коммитить (в `.gitignore`, но проверяй вручную)
+## What is forbidden to commit (in `.gitignore`, but verify manually)
 
-- `config.env` — реальные настройки
-- `*.session` — авторизация
-- `state.json` — состояние
+- `config.env` — real settings
+- `*.session` — authorization
+- `state.json` — state
 - `.venv/`, `__pycache__/`, `*.log`, `.DS_Store`
-- Любые файлы с реальными ключами/секретами/путями пользователя
+- Any files with real keys/secrets/user paths
 
-## Команда проверки перед пушем (одна строка)
+## Pre-push check command (one line)
 
 ```bash
-git status --short && git diff --cached --name-only | grep -E "config\.env$|\.session$|state\.json" && echo "❗СЕКРЕТ В ИНДЕКСЕ — СТОП" || echo "✅ чисто"
+git status --short && git diff --cached --name-only | grep -E "config\.env$|\.session$|state\.json" && echo "❗ SECRET IN INDEX — STOP" || echo "✅ clean"
 ```
 
-Если вывелось «❗СЕКРЕТ В ИНДЕКСЕ» — НЕ пуши. Убери файл из индекса, исправь.
+If it prints "❗ SECRET IN INDEX" — do NOT push. Remove the file from the index, fix it.
 
 ---
 
-## Правила выпуска релизов
+## Release rules
 
-Номер версии **обязан обновляться в коде** — он выводится пользователю в `/help`
-и `/status`. Источник истины — `claude_tg_bot/version.py: BOT_VERSION`
-(импортируется в `config` и в `__init__.__version__`). Не забывай её менять.
+The version number **must be updated in the code** — it is shown to the user in
+`/help` and `/status`. Source of truth — `claude_tg_bot/version.py: BOT_VERSION`
+(imported into `config` and `__init__.__version__`). Don't forget to change it.
 
-### Шаги выпуска релиза
+### Release steps
 
-1. **Обнови версию в коде**: подними `BOT_VERSION` в `claude_tg_bot/version.py`
-   до нужного номера (напр. `0.3.0` → `0.4.0`). `config` и `__init__.__version__`
-   берут значение оттуда автоматически — их править не нужно.
+1. **Update the version in code**: bump `BOT_VERSION` in
+   `claude_tg_bot/version.py` to the target number (e.g. `0.3.0` → `0.4.0`).
+   `config` and `__init__.__version__` take the value automatically — no need
+   to edit them.
 
-2. **Проверь и актуализируй документацию**: убедись, что `README.md` и
-   `AGENTS.md` соответствуют текущему поведению кода (новые команды, настройки,
-   формат ответов, обработка вложений). Не оставляй устаревших описаний.
+2. **Review and refresh the docs**: make sure `README.md` and `AGENTS.md` match
+   the current code behavior (new commands, settings, answer format, attachment
+   handling). Don't leave stale descriptions.
 
-3. **Прогони юнит-тесты**: используй интерпретатор из `.venv` (в нём стоит
-   `pyrogram`/`kurigram`). Системный `python3` зависимости не имеет — тесты
-   `test_tg_bot` / `test_media_cleanup` упадут с `ModuleNotFoundError: pyrogram`.
-   Тесты должны проходить; при падении разберись до релиза:
+3. **Run unit tests**: use the interpreter from `.venv` (it has
+   `pyrogram`/`kurigram`). The system `python3` lacks the dependencies — the
+   `test_tg_bot` / `test_media_cleanup` tests will fail with
+   `ModuleNotFoundError: pyrogram`. Tests must pass; if they fail, fix them
+   before the release:
    ```bash
    cd ~/StudioProjects/scripts/claude-tg-bot
    .venv/bin/python -m unittest discover -s tests -v
    ```
-   Если добавил новую логику — покрой её тестом перед релизом.
+   If you've added new logic — cover it with a test before the release.
 
-4. **Ветка + PR**: создай ветку (напр. `chore/bump-0.3.0`), смержи через PR
-   со сквошем в `main`. Не коммить напрямую в `main`.
+4. **Branch + PR**: create a branch (e.g. `chore/bump-0.3.0`), merge via a PR
+   with a squash into `main`. Don't commit directly to `main`.
 
-5. **Проверь секреты перед пушем** (см. правила выше): в коммит идут только
-   исходники/доки, никакого `config.env`, `*.session`, `state.json`.
+5. **Check secrets before pushing** (see rules above): only sources/docs go into
+   the commit, no `config.env`, `*.session`, `state.json`.
 
-6. **Тег релиза** на `main` после мержа. Формат — `v<номер>`, без префикса `v`
-   в `BOT_VERSION`:
+6. **Release tag** on `main` after the merge. Format — `v<number>`, no `v` prefix
+   in `BOT_VERSION`:
    ```bash
    git tag -a v0.3.0 -m "v0.3.0"
    git push origin v0.3.0
    ```
 
-7. **GitHub Release**: заведи релиз через `gh release create v0.3.0` с
-   ченджлогом (что добавлено/изменено относительно предыдущего тега).
+7. **GitHub Release**: create a release via `gh release create v0.3.0` with a
+   changelog (what was added/changed relative to the previous tag).
 
-### Правила версионирования
+### Versioning rules
 
-- **Семвер**: `MAJOR.MINOR.PATCH`.
-  - `PATCH` — багфиксы и мелкие правки (напр. формат ответов).
-  - `MINOR` — новые фичи (напр. `CLAUDE_PERMISSION_MODE`, `SANDBOX_COMMAND`).
-  - `MAJOR` — ломающие изменения.
-- **`BOT_VERSION`** указывается **без `v`** (`0.3.0`), а **тег — с `v`** (`v0.3.0`).
-- `__version__` в `__init__.py` НЕ править руками — он читает `version.BOT_VERSION`.
+- **Semver**: `MAJOR.MINOR.PATCH`.
+  - `PATCH` — bug fixes and minor tweaks (e.g. answer format).
+  - `MINOR` — new features (e.g. `CLAUDE_PERMISSION_MODE`, `SANDBOX_COMMAND`).
+  - `MAJOR` — breaking changes.
+- **`BOT_VERSION`** is written **without `v`** (`0.3.0`), and the **tag — with `v`** (`v0.3.0`).
+- `__version__` in `__init__.py` is NOT edited by hand — it reads `version.BOT_VERSION`.
 
 ---
 
-## Технические особенности (подводные камни)
+## Technical notes (pitfalls)
 
-Знания, которые сэкономили много времени при отладке. Не повторяй эти ошибки.
+Knowledge that saved a lot of debugging time. Don't repeat these mistakes.
 
-### Библиотека — Kurigram (dev-ветка), НЕ официальный Pyrogram
+### Library — Kurigram (dev branch), NOT the official Pyrogram
 
-- Пакет — **kurigram**, ставится из dev-ветки:
+- The package is **kurigram**, installed from the dev branch:
   `kurigram @ git+https://github.com/kurigram-org/kurigram.git@dev`
-- Требует **Python >=3.10** (venv сейчас на **3.13**). На 3.9 не встанет.
-- Внутри называется `pyrogram` — импорты остаются `from pyrogram import ...`.
-- **НЕ ставь wheel `kurigram>=2.2.25`**: в релизе **нет** нативной поддержки
-  MTProto-прокси (только `tg://socks`). Нативный `tg://proxy?...secret=ee`
-  (FakeTLS, SNI) — **только в dev-ветке**. Проверка: `from pyrogram.connection.proxy import MTProxy`.
+- Requires **Python >=3.10** (the venv is currently on **3.13**). Won't install on 3.9.
+- Internally it's called `pyrogram` — imports stay `from pyrogram import ...`.
+- **Do NOT install the wheel `kurigram>=2.2.25`**: the release has **no** native
+  MTProto-proxy support (only `tg://socks`). Native `tg://proxy?...secret=ee`
+  (FakeTLS, SNI) — **only in the dev branch**. Check:
+  `from pyrogram.connection.proxy import MTProxy`.
 
-### MTProto-прокси — без mtproxy-bridge
+### MTProto proxy — no mtproxy-bridge
 
-- Kurigram dev сам делает FakeTLS для `tg://proxy?secret=ee`. Передаём
-  `proxy=config.MT_PROXY` строкой напрямую. **mtproxy-bridge НЕ нужен**.
-- Прокси-зависимость — `python-socks` (модуль `python_socks`), **НЕ** PySocks
-  (`socks`). В `run.sh` проверка `import pyrogram, python_socks, dotenv`
-  (PySocks может не стоять — не проверять его).
+- Kurigram dev does the FakeTLS itself for `tg://proxy?secret=ee`. We pass
+  `proxy=config.MT_PROXY` as a string directly. **mtproxy-bridge is NOT needed**.
+- Proxy dependency — `python-socks` (module `python_socks`), **NOT** PySocks
+  (`socks`). In `run.sh` the check is `import pyrogram, python_socks, dotenv`
+  (PySocks may be absent — don't check it).
 
-### Kurigram `reply_text` НЕ поддерживает `quote`
+### Kurigram `reply_text` does NOT support `quote`
 
-В отличие от старого Pyrogram, `reply_text(...)` **не принимает `quote=`**.
-Вызов с `quote=True/False` даёт:
+Unlike the old Pyrogram, `reply_text(...)` **does not accept `quote=`**.
+Calling with `quote=True/False` gives:
 `TypeError: Message.reply() got an unexpected keyword argument 'quote'`.
-Все `quote=` из `reply_text` нужно убирать.
+All `quote=` in `reply_text` must be removed.
 
-### Фильтр сообщений — `filters.all`, а не `filters.incoming`
+### Message filter — `filters.all`, not `filters.incoming`
 
-- В **Избранном** свои сообщения приходят как `incoming`.
-- В **группе** сообщения от аккаунта бота приходят как **`outgoing`** —
-  `filters.incoming` их НЕ ловит (из-за этого бот «молчал» в группе).
-- Нужен `filters.all`, а защита от зацикливания:
+- In **Saved Messages** your own messages come as `incoming`.
+- In a **group** messages from the bot account come as **`outgoing`** —
+  `filters.incoming` doesn't catch them (that's why the bot "went silent" in a group).
+- Use `filters.all`, and the loop guard:
   `if message.outgoing and message.reply_to_message_id is not None: return`
-  (игнорировать собственные ответы-реплаи).
+  (ignore your own reply messages).
 
-### id группы: обычная группа — БЕЗ префикса `-100`
+### Group id: a regular group — WITHOUT the `-100` prefix
 
-- IDBot и юзерботы показывают id обычной группы **без** `-100`
-  (напр. `-1234567890`). Это и есть `chat_id` — **НЕ добавлять `-100`**.
-- Префикс `-100` — только для **супергрупп/каналов** (`-1001234567890`).
-- Сверяй реальный `chat_id` по логу бота, а не по IDBot.
+- IDBot and userbots show a regular group's id **without** `-100`
+  (e.g. `-1234567890`). That is the `chat_id` — **do NOT add `-100`**.
+- The `-100` prefix is only for **supergroups/channels** (`-1001234567890`).
+- Verify the real `chat_id` from the bot's log, not IDBot.
 
-### Формат `ALLOWED_CHAT_IDS` в config.env — НЕЛЬЗЯ `"a","b"`
+### `ALLOWED_CHAT_IDS` format in config.env — NOT `"a","b"`
 
-`ALLOWED_CHAT_IDS="123456789","-1234567890"` — **ОШИБКА**: python-dotenv
-падает (`could not parse statement starting at line N`) и **обнуляет** переменную.
-Правильно — **одна пара кавычек** на всё значение:
+`ALLOWED_CHAT_IDS="123456789","-1234567890"` — **ERROR**: python-dotenv
+crashes (`could not parse statement starting at line N`) and **zeroes out** the
+variable. Correct — **one pair of quotes** for the whole value:
 ```
 ALLOWED_CHAT_IDS="123456789,-1234567890"
 ```
-(или без кавычек). Кавычки вокруг каждого отдельного id — запрещены.
+(or without quotes). Quotes around each individual id are forbidden.
 
-### Рабочая директория проекта
+### Project working directory
 
-- `PROJECTS_ROOT` (корень проектов) — из `config.env`.
-- Конкретный проект (`st.project_root`, куда запускается claude как `cwd`) —
-  выбирается командами `/switch <имя>` / `/new <имя>` в Telegram.
-- `WORKSPACE_DIR` в `config.env` **не используется** в коде — не трать время на него.
+- `PROJECTS_ROOT` (projects root) — from `config.env`.
+- The specific project (`st.project_root`, where claude runs as `cwd`) —
+  selected via `/switch <name>` / `/new <name>` in Telegram.
+- `WORKSPACE_DIR` in `config.env` is **not used** in the code — don't waste time on it.
+
+## Language of user-facing strings (bilingual)
+
+User-facing strings (bot replies, console output) are **not** hardcoded in
+English in the code. They come from the shared locale files
+(`claude_tg_bot/locale/<lang>.json`), the language being set by `BOT_LANG` in
+`config.env` (default `en`). Both Python and the bash scripts read the same
+files. When you add a new user-facing message, add both the `en` key (mandatory)
+and the `ru` key (translation) to the locale files — do not inline the string.
