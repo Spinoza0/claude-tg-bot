@@ -1,15 +1,15 @@
 # ============================================================
 # Python
 # ============================================================
-# Виртуальное окружение
+# Virtual environment
 .venv/
 venv/
 env/
 
-# Локальные настройки Claude Code (не для git)
+# Local Claude Code settings (not for git)
 .claude/
 
-# Кэши и байткод
+# Caches and bytecode
 __pycache__/
 *.py[cod]
 *.pyo
@@ -18,7 +18,7 @@ __pycache__/
 *.whl
 .python-version
 
-# Инструменты
+# Tools
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -28,31 +28,31 @@ build/
 dist/
 
 # ============================================================
-# Секреты и настройки БОТА — их нельзя коммитить
+# Bot secrets and settings — must never be committed
 # ============================================================
-# Реальный конфиг с секретами (API_ID, API_HASH, PHONE, MT_PROXY, ALLOWED_USERS)
+# The real config with secrets (API_ID, API_HASH, PHONE, MT_PROXY, ALLOWED_USERS)
 config.env
 
-# Файл авторизации MTProto-клиента (сессия входа в Telegram) — секрет
-# и связанные SQLite-файлы (WAL-журнал, SHM) — пересоздаются при работе, мусор для git
+# The MTProto client auth file (Telegram login session) — a secret,
+# and the related SQLite files (WAL journal, SHM) — recreated at runtime, git junk
 *.session
 *.session-journal
 *.session-wal
 *.session-shm
 claude-tg-bot.session
 
-# Состояние сессий пользователей (каталоги и контекст)
+# User session state (directories and context)
 state.json
 
 # ============================================================
-# Логи
+# Logs
 # ============================================================
 *.log
 logs/
-# NB: НЕ используем *.txt — иначе исключится requirements.txt
+# NB: we do NOT use *.txt — otherwise requirements.txt would be excluded
 
 # ============================================================
-# ОС / редакторы
+# OS / editors
 # ============================================================
 # macOS
 .DS_Store
@@ -60,23 +60,23 @@ logs/
 .LSOverride
 Icon?
 
-# Файлы-артефакты macOS (сжатые копии при копировании)
+# macOS artifact files (compressed copies on copy)
 *.cpgz
 *._*
 
-# Редакторы
+# Editors
 .vscode/
 .idea/
 *.swp
 *.swo
 
 # ============================================================
-# Временные файлы
+# Temporary files
 # ============================================================
 tmp/
 temp/
 *.tmp
 *.bak
 
-# Файл-пример конфига НЕ игнорируем (он в гите):
-# config.env.example — это публичный шаблон без секретов.
+# The example config is NOT ignored (it's in git):
+# config.env.example — a public template without secrets.

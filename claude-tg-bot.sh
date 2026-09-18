@@ -59,7 +59,7 @@ else
     # Placeholders that must be replaced.
     # We check the WHOLE lines of the form KEY=PLACEHOLDER (via ^ and $ anchors),
     # so we don't catch substrings — e.g. the number 123456789 inside a real API_HASH.
-    UNSET=$(grep -E -e "^API_ID=ЗАМЕНИ_МЕНЯ$" -e "^API_HASH=ЗАМЕНИ_МЕНЯ$" -e "^API_ID=0$" -e "^PHONE=\+7XXXXXXXXXX$" -e "^ALLOWED_USERS=123456789$" -e "^ALLOWED_USERS=$" -e "^PROJECTS_ROOT=$" "$CONFIG_ENV" || true)
+    UNSET=$(grep -E -e "^API_ID=CHANGE_ME$" -e "^API_HASH=CHANGE_ME$" -e "^API_ID=0$" -e "^PHONE=\+7XXXXXXXXXX$" -e "^ALLOWED_USERS=123456789$" -e "^ALLOWED_USERS=$" -e "^PROJECTS_ROOT=$" "$CONFIG_ENV" || true)
     if [ -n "$UNSET" ]; then
         echo "$(lib_msg run.sh.cfg_placeholders)"
         echo "   $UNSET"

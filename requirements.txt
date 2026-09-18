@@ -1,16 +1,16 @@
-# Телеграм-клиент на MTProto (userbot) + быстрый крипто-движок.
-# Kurigram (dev-ветка) — форк Pyrogram с нативной поддержкой MTProto-прокси:
-# принимает proxy строкой "tg://proxy?server=...&port=...&secret=...", сам делает
-# FakeTLS-хендшейк (ee-секрет) и выбирает транспорт TCPIntermediatePadded.
-# Пакет внутри назван 'pyrogram', поэтому импорты остаются `from pyrogram import ...`.
+# Telegram MTProto client (userbot) + a fast crypto engine.
+# Kurigram (dev branch) — a Pyrogram fork with native MTProto-proxy support:
+# accepts the proxy as a "tg://proxy?server=...&port=...&secret=..." string, does
+# the FakeTLS handshake (ee-secret) itself and picks the TCPIntermediatePadded transport.
+# The package is named 'pyrogram', so imports stay `from pyrogram import ...`.
 kurigram @ git+https://github.com/kurigram-org/kurigram.git@dev
 TgCrypto>=1.2.5
 
-# Для MTProto-прокси Kurigram работает через python-socks
+# For the MTProto proxy Kurigram works via python-socks
 python-socks>=2.4.0
 
-# Загрузка .env (опционально, если не нужен — можно убрать)
+# .env loading (optional — remove if not needed)
 python-dotenv>=1.0
 
-# Удаление файлов в корзину macOS (DELETE_MODE=trash)
+# Deleting files into the macOS Trash (DELETE_MODE=trash)
 send2trash>=1.8
