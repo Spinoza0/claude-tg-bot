@@ -210,7 +210,6 @@ def main() -> None:
                                choices=lang_choices.get(key))
             if key == "BOT_LANG" and values[key]:
                 i18n.set_lang(values[key])
-            # SANDBOX_COMMAND must not shadow a reserved bot command — re-ask.
             if key == "SANDBOX_COMMAND":
                 while values[key] and _reserved_collision(values[key]):
                     print(i18n.t("setup.invalid_sandbox_command"))
