@@ -1,0 +1,82 @@
+# ============================================================
+# Python
+# ============================================================
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Local Claude Code settings (not for git)
+.claude/
+
+# Caches and bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+*.whl
+.python-version
+
+# Tools
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# ============================================================
+# Bot secrets and settings — must never be committed
+# ============================================================
+# The real config with secrets (API_ID, API_HASH, PHONE, MT_PROXY, ALLOWED_USERS)
+config.env
+
+# The MTProto client auth file (Telegram login session) — a secret,
+# and the related SQLite files (WAL journal, SHM) — recreated at runtime, git junk
+*.session
+*.session-journal
+*.session-wal
+*.session-shm
+claude-tg-bot.session
+
+# User session state (directories and context)
+state.json
+
+# ============================================================
+# Logs
+# ============================================================
+*.log
+logs/
+# NB: we do NOT use *.txt — otherwise requirements.txt would be excluded
+
+# ============================================================
+# OS / editors
+# ============================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# macOS artifact files (compressed copies on copy)
+*.cpgz
+*._*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ============================================================
+# Temporary files
+# ============================================================
+tmp/
+temp/
+*.tmp
+*.bak
+
+# The example config is NOT ignored (it's in git):
+# config.env.example — a public template without secrets.
