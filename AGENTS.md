@@ -121,6 +121,20 @@ The version number **must be updated in the code** — it is shown to the user i
 `/help` and `/status`. Source of truth — `claude_tg_bot/version.py: BOT_VERSION`
 (imported into `config` and `__init__.__version__`). Don't forget to change it.
 
+### Version bump on every merged PR
+
+After **each** PR is merged into `main`, bump `BOT_VERSION` (per the Semver rules
+below) in the same branch/PR that also holds the change, following the branch+PR
+workflow — don't bump it separately after the merge. A merged feature/fix PR must
+carry a version bump; the initial commit sets the starting version.
+
+### Release (tag + GitHub Release) — on command
+
+Bumping `BOT_VERSION` happens on every PR, but creating the git **tag** and the
+**GitHub Release** is done only when the maintainer asks (releases may batch
+several PRs). The release step below describes how to create it when asked. So a
+bumped `main` does not automatically get a tag/release on every merge.
+
 ### Release steps
 
 1. **Update the version in code**: bump `BOT_VERSION` in
