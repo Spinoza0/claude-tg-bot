@@ -16,6 +16,13 @@ from .process import _active_tasks, _bot_proc_pids, kill_bot_procs
 from .media import _delete_path, _dir_size, _fmt_bytes
 from .reply import _reply
 
+# Reserved slash commands handled by on_command (lowercase, without the '/').
+# Used to validate that SANDBOX_COMMAND never shadows a bot command (see setup.py).
+RESERVED_COMMANDS = {
+    "start", "help", "list", "switch", "new", "status", "lang",
+    "kill", "clearmedia", "mediasize",
+}
+
 
 async def on_command(client, message: Message, text: str, sandbox: bool = False):
     """Command handling: /start /list /switch /new /status /clean /help.

@@ -14,6 +14,8 @@ from typing import Optional
 
 from . import i18n
 
+from .commands import RESERVED_COMMANDS
+
 # Config directory and config.env file (live in ~/.claude-tg-bot/, next to sandbox).
 _CFG_DIR = Path.home() / ".claude-tg-bot"
 _CFG_PATH = _CFG_DIR / "config.env"
@@ -83,6 +85,16 @@ def _strip_inline_comment(val: str) -> str:
         elif ch == "#" and not in_quote and (i == 0 or val[i - 1].isspace()):
             return val[:i].rstrip()
     return val
+
+
+def _reserved_collision(value: str) -> bool:
+    """Whether a SANDBOX_COMMAND value shadows a reserved bot command.
+
+    Strips leading '@' and '/', lowercases, and compares against RESERVED_COMMANDS
+    (e.g. '/status', '@status', 'status' all collide with the '/status' command).
+    """
+    norm = value.strip().lstrip("@").lstrip("/").lower()
+    return norm in RESERVED_COMMANDS
 
 
 def _load_existing() -> dict[str, str]:
@@ -198,6 +210,10 @@ def main() -> None:
                                choices=lang_choices.get(key))
             if key == "BOT_LANG" and values[key]:
                 i18n.set_lang(values[key])
+            if key == "SANDBOX_COMMAND":
+                while values[key] and _reserved_collision(values[key]):
+                    print(i18n.t("setup.invalid_sandbox_command"))
+                    values[key] = _ask(key, hint, current, default, required)
 
     values.update(DEFAULTS)
 

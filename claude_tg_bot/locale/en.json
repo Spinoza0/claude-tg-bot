@@ -98,6 +98,7 @@
   "setup.prompt_empty": "{name}: {hint} {tag}. Enter = skip: ",
   "setup.choices": "Available: {options}\n",
   "setup.invalid_choice": "Choose one of: {options}",
+  "setup.invalid_sandbox_command": "⚠️ This value collides with a reserved bot command. Pick another trigger.",
   "setup.aborted": "\nAborted. Nothing was saved.",
   "setup.bak_created": "   Backup created: {path}",
   "setup.written": "   Written: {path}",

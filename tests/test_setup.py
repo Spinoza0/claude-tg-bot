@@ -3,7 +3,7 @@
 import unittest
 from unittest import mock
 
-from claude_tg_bot.setup import BOT_LANG_CHOICES, GROUPS, _ask, _sanitize, _strip_inline_comment
+from claude_tg_bot.setup import BOT_LANG_CHOICES, GROUPS, _ask, _reserved_collision, _sanitize, _strip_inline_comment
 
 
 class TestGroupRequired(unittest.TestCase):
@@ -63,6 +63,31 @@ class TestSanitize(unittest.TestCase):
 
     def test_empty_kept_empty(self):
         self.assertEqual(_sanitize(""), "")
+
+
+class TestReservedCollision(unittest.TestCase):
+    """SANDBOX_COMMAND must not shadow a reserved bot command (issue #35)."""
+
+    def test_plain_reserved_collides(self):
+        self.assertTrue(_reserved_collision("/status"))
+
+    def test_at_prefix_collides(self):
+        self.assertTrue(_reserved_collision("@status"))
+
+    def test_at_slash_collides(self):
+        self.assertTrue(_reserved_collision("@/status"))
+
+    def test_case_insensitive_collides(self):
+        self.assertTrue(_reserved_collision("STATUS"))
+
+    def test_default_helpbot_ok(self):
+        self.assertFalse(_reserved_collision("@helpbot"))
+
+    def test_custom_trigger_ok(self):
+        self.assertFalse(_reserved_collision("@mytool"))
+
+    def test_empty_ok(self):
+        self.assertFalse(_reserved_collision(""))
 
 
 if __name__ == "__main__":
