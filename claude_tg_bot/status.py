@@ -10,6 +10,7 @@ output, and print a status block to the console — "🟢 Working" or
 
 import asyncio
 import logging
+import shutil
 import sys
 import threading
 import time
@@ -39,16 +40,19 @@ class _StatusFilter(logging.Handler):
         self._owned: list[str] = []
 
     def install(self) -> None:
-        for name in ("pyrogram",):
-            logger = logging.getLogger(name)
-            # Remove Pyrogram's default output (StderrHandler etc.) so messages
-            # are not printed directly — only via the intercept.
-            for h in list(logger.handlers):
-                logger.removeHandler(h)
-            logger.addHandler(self)
-            logger.setLevel(logging.WARNING)
-            logger.propagate = False
-            self._owned.append(name)
+        # Intercept every logger under the "pyrogram" tree (pyrogram,
+        # pyrogram.connection, pyrogram.session, ...), not just the root one.
+        # A child logger that installs its own stderr handler would otherwise
+        # still print connection errors directly, bypassing the intercept.
+        for name in list(logging.root.manager.loggerDict):
+            if name == "pyrogram" or name.startswith("pyrogram."):
+                logger = logging.getLogger(name)
+                for h in list(logger.handlers):
+                    logger.removeHandler(h)
+                logger.addHandler(self)
+                logger.setLevel(logging.WARNING)
+                logger.propagate = False
+                self._owned.append(name)
 
     def emit(self, record: logging.LogRecord) -> None:
         if record.levelno < logging.WARNING:
@@ -124,6 +128,20 @@ def _use_color() -> bool:
     return sys.stdout.isatty()
 
 
+def _fit_width(text: str) -> str:
+    """Trim a line to the terminal width so it never wraps.
+
+    A wrapped line would occupy a whole extra row, but _draw_status tracks the
+    block height by len(lines) — so a wrap breaks the redraw (leftover text,
+    "Working" duplicates). We trim glyphs; emoji count is inexact, but a wide
+    glyph just leaves 1 spare column — no wrap. Fall back to 80 if not a tty.
+    """
+    width = shutil.get_terminal_size().columns or 80
+    if len(text) <= width:
+        return text
+    return text[: max(0, width - 1)] + "…"
+
+
 def _friendly(record: str) -> str:
     """Turn a raw Pyrogram message into a user-friendly error.
 
@@ -161,6 +179,9 @@ def _draw_status(lines: list[str]) -> None:
     the cursor to the end of screen (\\033[J) — this removes the whole old block
     (so a 1↔2 height change leaves no tail) without touching the lines above.
     Then print the new block. \\033[2K before a line clears leftovers on wrap.
+    A carriage return (\\r) first resets the column to 0 — \\033[F moves the
+    cursor up but keeps its column, so without \\r the line would be drawn
+    offset and the previous one wouldn't be fully cleared.
     """
     global _STATUS_PREV_LINES
     out = sys.stdout
@@ -170,7 +191,7 @@ def _draw_status(lines: list[str]) -> None:
     for i, line in enumerate(lines):
         if i:
             out.write("\n")
-        out.write("\033[2K" + line)
+        out.write("\r\033[2K" + _fit_width(line))
     out.flush()
     _STATUS_PREV_LINES = len(lines)
 
@@ -178,11 +199,11 @@ def _draw_status(lines: list[str]) -> None:
 def _status_lines(err_display: str, err_ts: float, err_active: bool, work_ts: float) -> list[str]:
     """Assemble the status block rows: working state + last error.
 
-    The icon (🟢/❌) is set only on the CURRENT state:
+    The icon (🟢/❌) reflects the current state:
       - if there's a problem now (err_active=True) — ❌ on the error, "Working"
         without 🟢;
-      - if all is well — 🟢 on "Working", and the last error without ❌ (as
-        history). Both rows are shown together; the error is always last.
+      - if all is well — 🟢 on "Working"; the last error is still shown with ❌
+        (as history), but a stale one drops no 🟢 from the working row.
     No errors at all — only "Working".
     work_ts — the time the "working" state was established (NOT ticking every
     loop, otherwise the line would change and the block would keep redrawing).
@@ -192,7 +213,6 @@ def _status_lines(err_display: str, err_ts: float, err_active: bool, work_ts: fl
         return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)) if t else ""
     work_ts_s = fmt(work_ts)
     if err_active:
-        # Problem now: working without 🟢, the error with ❌.
         if color:
             work = f"\033[32m{i18n.t('status.working')}\033[0m [{work_ts_s}]"
             err = f"\033[31m{i18n.t('status.error', err=err_display)}\033[0m [{fmt(err_ts)}]"
@@ -200,14 +220,18 @@ def _status_lines(err_display: str, err_ts: float, err_active: bool, work_ts: fl
             work = f"{i18n.t('status.working')} [{work_ts_s}]"
             err = f"{i18n.t('status.error', err=err_display)} [{fmt(err_ts)}]"
         return [work, err]
-    # All well now: 🟢 on working; the last error — without ❌ (history).
     if color:
         work = f"\033[32m{i18n.t('status.working_ok')}\033[0m [{work_ts_s}]"
+        if err_display:
+            err = f"\033[31m{i18n.t('status.error', err=err_display)}\033[0m [{fmt(err_ts)}]"
+        else:
+            err = ""
     else:
         work = f"{i18n.t('status.working_ok')} [{work_ts_s}]"
+        err = f"{i18n.t('status.error', err=err_display)} [{fmt(err_ts)}]" if err_display else ""
     lines = [work]
-    if err_display:
-        lines.append(f"{i18n.t('status.error_no_icon', err=err_display)} [{fmt(err_ts)}]")
+    if err:
+        lines.append(err)
     return lines
 
 

@@ -57,7 +57,6 @@
   "status.working": "Working",
   "status.working_ok": "🟢 Working",
   "status.error": "❌ Error: {err}",
-  "status.error_no_icon": "Error: {err}",
   "status.err_timeout": "Telegram connection failure — no response from server",
   "status.err_no_network": "No network access — cannot resolve host",
   "status.err_no_connection": "No connection to Telegram",

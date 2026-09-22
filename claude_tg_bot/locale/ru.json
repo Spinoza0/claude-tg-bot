@@ -57,7 +57,6 @@
   "status.working": "Работаю",
   "status.working_ok": "🟢 Работаю",
   "status.error": "❌ Ошибка: {err}",
-  "status.error_no_icon": "Ошибка: {err}",
   "status.err_timeout": "Сбой соединения с Telegram — нет ответа от сервера",
   "status.err_no_network": "Нет доступа к сети — не удаётся разрешить хост",
   "status.err_no_connection": "Нет соединения с Telegram",

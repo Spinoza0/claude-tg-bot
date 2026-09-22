@@ -1,8 +1,8 @@
 """Unit tests for the unified console status (Pyrogram log interception).
 
 We check that the interceptor remembers the last error and does NOT stamp it to
-stderr, and that the status loop shows "✗ Error" for a fresh error and "● Working"
-when it's stale.
+stderr, and that the status loop shows "🟢 Working" when healthy and "❌ Error"
+(with ❌) when an error is present — fresh or as history.
 """
 
 import asyncio
@@ -110,8 +110,8 @@ class TestStatusLoop(unittest.TestCase):
         last = printed[-1]
         self.assertEqual(len(last), 2)
         self.assertIn("🟢", last[0])             # ok — Working with 🟢
+        self.assertIn("❌", last[1])             # error always with ❌
         self.assertIn("Error", last[1])
-        self.assertNotIn("❌", last[1])          # error stale — no ❌
 
 
 class TestRunError(unittest.TestCase):
@@ -210,6 +210,30 @@ class TestDrawStatus(unittest.TestCase):
             self.assertEqual(st._STATUS_PREV_LINES, 2)
         finally:
             sys.stdout.write = orig
+
+    def test_redraw_resets_column(self):
+        # A redraw must return the cursor to column 0 (\\r) before drawing each
+        # row: \\033[F moves up but keeps the column, so without \\r the new block
+        # is drawn offset and the old one is left visible (two "Working" lines).
+        out = self._draw_sequence([
+            ["🟢 Working [t1]"],
+            ["🟢 Working [t2]", "❌ Error: failure [t2]"],
+        ])
+        self.assertIn("\r\x1b[2K", out)
+
+    def test_draw_status_trims_long_line(self):
+        # A long line would wrap and break the block height tracking (a wrapped
+        # row occupies an extra visual line). _fit_width trims it to the width.
+        long = "x" * 500
+        out = self._draw_sequence([["🟢 Working [t1]", long]])
+        self.assertNotIn(long, out)
+
+    def test_fit_width_short(self):
+        self.assertEqual(st._fit_width("short line"), "short line")
+
+    def test_fit_width_long_truncates(self):
+        self.assertEqual(st._fit_width("a" * 500)[-1], "…")
+        self.assertLess(len(st._fit_width("a" * 500)), 500)
 
 
 if __name__ == "__main__":
