@@ -45,6 +45,33 @@ class TestStatusFilter(unittest.TestCase):
         err, _ = sf.snapshot()
         self.assertIn("second error", err)
 
+    def test_install_intercepts_pyrogram_loggers(self):
+        # install() must route pyrogram.* records into the interceptor and keep
+        # them off stderr, even for lazily-created child loggers. A non-pyrogram
+        # record still reaches the app's normal output.
+        import io
+        import sys as _sys
+
+        logging.getLogger("claude_tg_bot").addHandler(
+            logging.FileHandler("/tmp/_status_test.log", mode="w")
+        )
+        try:
+            st._STATUS_FILTER.install()
+            buf = io.StringIO()
+            real = _sys.stderr
+            _sys.stderr = buf
+            logging.getLogger("pyrogram.connection.transport.tcp").warning(
+                "Connection failed: gaierror [Errno 8] nodename"
+            )
+            _sys.stderr = real
+            # raw message must NOT appear on stderr, but is captured
+            self.assertNotIn("Connection failed", buf.getvalue())
+            err, _ = st._STATUS_FILTER.snapshot()
+            self.assertIn("Connection failed", err)
+        finally:
+            _sys.stderr = real
+            logging.getLogger("claude_tg_bot").handlers.clear()
+
 
 class TestFriendly(unittest.TestCase):
     """Converting raw Pyrogram messages into readable text."""

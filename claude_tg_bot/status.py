@@ -35,26 +35,44 @@ class _StatusFilter(logging.Handler):
         self._lock = threading.Lock()
         self._last_error: Optional[str] = None
         self._last_error_ts: float = 0.0
-        # Disable handler inheritance from parent loggers so Pyrogram does not
-        # duplicate messages to stderr bypassing the intercept.
-        self._owned: list[str] = []
+        # Original root handlers stripped in install() and re-attached for
+        # non-Pyrogram records (we don't want to silence the rest of the app).
+        self._passthrough: list = []
 
     def install(self) -> None:
-        # Intercept every logger under the "pyrogram" tree (pyrogram,
-        # pyrogram.connection, pyrogram.session, ...), not just the root one.
-        # A child logger that installs its own stderr handler would otherwise
-        # still print connection errors directly, bypassing the intercept.
-        for name in list(logging.root.manager.loggerDict):
-            if name == "pyrogram" or name.startswith("pyrogram."):
-                logger = logging.getLogger(name)
-                for h in list(logger.handlers):
-                    logger.removeHandler(h)
-                logger.addHandler(self)
-                logger.setLevel(logging.WARNING)
-                logger.propagate = False
-                self._owned.append(name)
+        # Intercept at the ROOT logger, not per-logger: Pyrogram creates its
+        # child loggers (pyrogram.connection, ...) lazily, so a per-name pass
+        # over loggerDict finds none at startup and the raw stderr output leaks.
+        # Routing through the root guarantees every "pyrogram.*" record is seen.
+        root = logging.getLogger()
+        self._passthrough = list(root.handlers)
+        for h in list(root.handlers):
+            root.removeHandler(h)
+        root.addHandler(self)
+        root.setLevel(logging.NOTSET)
+        # Don't let our own mirror logger bubble up to the root (re-enter here).
+        logging.getLogger("claude_tg_bot").propagate = False
 
     def emit(self, record: logging.LogRecord) -> None:
+        name = record.name
+        if name == "claude_tg_bot" or not name.startswith("pyrogram"):
+            # Not a Pyrogram connection message — let it reach the original
+            # root handlers (or the lastResort fallback) so the rest of the app
+            # still logs normally.
+            emitted = False
+            for h in self._passthrough:
+                try:
+                    if h.level <= record.levelno:
+                        h.handle(record)
+                        emitted = True
+                except Exception:
+                    pass
+            if not emitted and logging.lastResort is not None:
+                try:
+                    logging.lastResort.handle(record)
+                except Exception:
+                    pass
+            return
         if record.levelno < logging.WARNING:
             return
         try:
@@ -65,8 +83,12 @@ class _StatusFilter(logging.Handler):
             self._last_error = msg
             self._last_error_ts = time.time()
         # Mirror to the log file (if logging is enabled) — these are Pyrogram
-        # errors (connection/retries), important for diagnostics.
-        logging.getLogger("claude_tg_bot").log(record.levelno, msg)
+        # errors (connection/retries), important for diagnostics. Only write it
+        # if claude_tg_bot actually has a handler; otherwise the logging module
+        # would emit a "No handlers could be found" warning to stderr.
+        bot_log = logging.getLogger("claude_tg_bot")
+        if bot_log.handlers:
+            bot_log.log(record.levelno, msg)
 
     def snapshot(self) -> tuple[Optional[str], float]:
         with self._lock:
