@@ -222,35 +222,16 @@ attachment type isn't recognized at all — the bot replies "Can't process: <typ
 
 ## Running the sandbox in any chat (`@helpbot`)
 
-Besides the active project, the bot can run a sandbox **in any chat** it is a
-member of, by mentioning `@helpbot`. That's convenient in groups/channels where
-you don't want a separate project.
+Prefacing a message with the sandbox trigger (default `@helpbot`, set by
+`SANDBOX_COMMAND` in `config.env`) routes it into `SANDBOX_ROOT` instead of the
+active project. Here the sender must be in `ALLOWED_USERS`, but the chat
+restriction (`ALLOWED_CHAT_IDS`) does not apply — the sandbox can be invoked
+from any chat. `@helpbot` projects are stored separately from the regular ones
+(`PROJECTS_ROOT`), and both can run in parallel without overlapping context.
 
-How it works:
-- A message must **start** with the `@helpbot` mention, then a space and a
-  command/text (with an attachment or not). From it, `@helpbot` and all spaces
-  after it are stripped; the remainder is processed **like a regular bot message**,
-  but in a sandboxed context (root `SANDBOX_ROOT`, a separate project choice). Examples:
-  - `@helpbot check README for errors` → Claude in the sandbox directory
-  - `@helpbot /status` → the bot status, but about `SANDBOX_ROOT`
-  - `@helpbot /list` → the list of `SANDBOX_ROOT` directories
-  - `@helpbot /new foo` → create a `SANDBOX_ROOT/foo` directory and activate it
-  - `@helpbot /switch foo` → switch to the `SANDBOX_ROOT/foo` directory
-  - `@helpbot /clear` → first automatically calls `/clearmedia` (sandbox attachment cleanup), then resets the Claude context
-  - `@helpbot` + photo/video/file → Claude with an attachment
-- The sender must be in `ALLOWED_USERS`. The chat restriction
-  (`ALLOWED_CHAT_IDS`) is **not applied** to `@helpbot` — the sandbox can be
-  invoked from any chat the bot is in.
-- If after stripping `@helpbot` and the spaces an empty string remains **and**
-  there's no attachment — the message is silently ignored.
-- **Separate state**: `@helpbot` projects (`SANDBOX_ROOT/...`) are stored
-  separately from regular ones (`PROJECTS_ROOT/...`). The `/switch`/`/new`
-  commands inside `@helpbot` change only the sandbox project and don't touch the
-  regular one, and vice versa. The Claude session is bound to a specific
-  directory, so both branches can run in parallel without overlapping context.
-- The sandbox runs in the `SANDBOX_ROOT` directory (or the default sandbox
-  `~/.claude-tg-bot/sandbox`), regardless of the user's active project. If no
-  sandbox project is selected — it works right in the `SANDBOX_ROOT` root.
+Everything else works the same as described above — the same commands
+(`/status`, `/list`, `/new foo`, `/switch foo`, `/clearmedia`, `/mediasize`) and
+attachment handling, just applied to the sandbox root and its project choice.
 
 ## Limitations
 
