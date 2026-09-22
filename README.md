@@ -264,3 +264,10 @@ How it works:
   task may delay the next message.
 - The tool set and model are determined by the chosen Claude's settings
   (`CLAUDE_COMMAND` / `COMMAND_ARGS`), not by the bot.
+
+## License
+
+Released under the [MIT License](LICENSE). © 2026
+[Spinoza](https://github.com/Spinoza0). The project depends on several
+third-party libraries (e.g. `kurigram`, `TgCrypto`) that carry their own
+licenses — see `LICENSE` for the full list and their terms.
