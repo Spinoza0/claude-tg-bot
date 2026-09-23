@@ -3,7 +3,7 @@
 import unittest
 from unittest import mock
 
-from claude_tg_bot.setup import BOT_LANG_CHOICES, GROUPS, _ask, _reserved_collision, _sanitize, _strip_inline_comment
+from claude_tg_bot.setup import BOT_LANG_CHOICES, DEFAULT_CHOICES, GROUPS, _ask, _reserved_collision, _sanitize, _strip_inline_comment
 
 
 class TestGroupRequired(unittest.TestCase):
@@ -35,6 +35,27 @@ class TestBotLangChoice(unittest.TestCase):
 
     def test_choices_match_available(self):
         self.assertIn("en", BOT_LANG_CHOICES)
+
+
+class TestBehaviorFlags(unittest.TestCase):
+    """The "hidden" runtime flags are now asked at setup (KEEP_AWAKE etc.)."""
+
+    def test_flags_in_groups(self):
+        group_keys = {k for g in GROUPS for k, _r, _d, _h in g[1]}
+        for key in ("KEEP_AWAKE", "AUTO_DELETE_MEDIA", "DELETE_MODE", "CLAUDE_PERMISSION_MODE"):
+            self.assertIn(key, group_keys)
+
+    def test_every_choice_setting_has_choices(self):
+        for key, choices in DEFAULT_CHOICES.items():
+            self.assertGreater(len(choices), 0)
+
+    def test_bool_choice_validates(self):
+        # invalid bool value is rejected, then "true" accepted
+        with mock.patch("builtins.input", side_effect=["maybe", "true"]):
+            self.assertEqual(
+                _ask("KEEP_AWAKE", "desc", "", "false", False, choices=["true", "false"]),
+                "true",
+            )
 
 
 class TestStripInlineComment(unittest.TestCase):
