@@ -1,8 +1,8 @@
 """Unit tests for the unified console status (Pyrogram log interception).
 
 We check that the interceptor remembers the last error and does NOT stamp it to
-stderr, and that the status loop shows "✗ Error" for a fresh error and "● Working"
-when it's stale.
+stderr, and that the status loop shows "🟢 Working" when healthy and "❌ Error"
+(with ❌) when an error is present — fresh or as history.
 """
 
 import asyncio
@@ -44,6 +44,52 @@ class TestStatusFilter(unittest.TestCase):
         sf.emit(_record("second error"))
         err, _ = sf.snapshot()
         self.assertIn("second error", err)
+
+    def test_install_intercepts_pyrogram_loggers(self):
+        # install() must route pyrogram.* records into the interceptor and keep
+        # them off stderr, even for lazily-created child loggers. A non-pyrogram
+        # record still reaches the app's normal output.
+        import io
+        import sys as _sys
+
+        logging.getLogger("claude_tg_bot").addHandler(
+            logging.FileHandler("/tmp/_status_test.log", mode="w")
+        )
+        root = logging.getLogger()
+        root_handlers = list(root.handlers)
+        root_level = root.level
+        try:
+            st._STATUS_FILTER.install()
+            buf = io.StringIO()
+            real = _sys.stderr
+            _sys.stderr = buf
+            logging.getLogger("pyrogram.connection.transport.tcp").warning(
+                "Connection failed: gaierror [Errno 8] nodename"
+            )
+            _sys.stderr = real
+            # raw message must NOT appear on stderr, but is captured
+            self.assertNotIn("Connection failed", buf.getvalue())
+            err, _ = st._STATUS_FILTER.snapshot()
+            self.assertIn("Connection failed", err)
+            # claude_tg_bot diagnostics (launch errors) must not leak to stderr
+            buf2 = io.StringIO()
+            _sys.stderr = buf2
+            logging.getLogger("claude_tg_bot").error(
+                "Claude launch finished with code 1: API Error: 502"
+            )
+            _sys.stderr = real
+            self.assertNotIn("Claude launch", buf2.getvalue())
+        finally:
+            _sys.stderr = real
+            logging.getLogger("claude_tg_bot").handlers.clear()
+            # restore root logging so we don't disturb other tests
+            for h in list(root.handlers):
+                root.removeHandler(h)
+            for h in root_handlers:
+                root.addHandler(h)
+            root.setLevel(root_level)
+            st._STATUS_FILTER._last_error = None
+            st._STATUS_FILTER._last_error_ts = 0.0
 
 
 class TestFriendly(unittest.TestCase):
@@ -110,8 +156,8 @@ class TestStatusLoop(unittest.TestCase):
         last = printed[-1]
         self.assertEqual(len(last), 2)
         self.assertIn("🟢", last[0])             # ok — Working with 🟢
+        self.assertIn("❌", last[1])             # error always with ❌
         self.assertIn("Error", last[1])
-        self.assertNotIn("❌", last[1])          # error stale — no ❌
 
 
 class TestRunError(unittest.TestCase):
@@ -210,6 +256,30 @@ class TestDrawStatus(unittest.TestCase):
             self.assertEqual(st._STATUS_PREV_LINES, 2)
         finally:
             sys.stdout.write = orig
+
+    def test_redraw_resets_column(self):
+        # A redraw must return the cursor to column 0 (\\r) before drawing each
+        # row: \\033[F moves up but keeps the column, so without \\r the new block
+        # is drawn offset and the old one is left visible (two "Working" lines).
+        out = self._draw_sequence([
+            ["🟢 Working [t1]"],
+            ["🟢 Working [t2]", "❌ Error: failure [t2]"],
+        ])
+        self.assertIn("\r\x1b[2K", out)
+
+    def test_draw_status_trims_long_line(self):
+        # A long line would wrap and break the block height tracking (a wrapped
+        # row occupies an extra visual line). _fit_width trims it to the width.
+        long = "x" * 500
+        out = self._draw_sequence([["🟢 Working [t1]", long]])
+        self.assertNotIn(long, out)
+
+    def test_fit_width_short(self):
+        self.assertEqual(st._fit_width("short line"), "short line")
+
+    def test_fit_width_long_truncates(self):
+        self.assertEqual(st._fit_width("a" * 500)[-1], "…")
+        self.assertLess(len(st._fit_width("a" * 500)), 500)
 
 
 if __name__ == "__main__":

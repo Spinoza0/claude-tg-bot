@@ -329,6 +329,11 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
                     break
                 logger.warning("Model unavailable (attempt %s), switching argument set", attempt)
                 await asyncio.sleep(_retry_backoff_delay(attempt))
+            # If we switched to the fallback set but it also failed (attempts
+            # exhausted, model still unavailable) — tell the user explicitly,
+            # otherwise it reads as a single failure of the base set.
+            if was_on_alt and switch_notified and _is_model_unavailable(result):
+                await _send_with_retry(message, i18n.t("handlers.alt_fail"))
             # A model/wrapper error (went down, returned is_error) — show ❌ in the
             # console status, not just "Working". The text goes to Telegram as-is
             # so the user sees the reason.
