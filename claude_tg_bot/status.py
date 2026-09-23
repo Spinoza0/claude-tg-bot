@@ -50,31 +50,45 @@ class _StatusFilter(logging.Handler):
             root.removeHandler(h)
         root.addHandler(self)
         root.setLevel(logging.NOTSET)
-        # Don't let our own mirror logger bubble up to the root (re-enter here).
-        logging.getLogger("claude_tg_bot").propagate = False
 
     def emit(self, record: logging.LogRecord) -> None:
         name = record.name
-        if name == "claude_tg_bot" or not name.startswith("pyrogram"):
-            # Not a Pyrogram connection message — let it reach the original
-            # root handlers (or the lastResort fallback) so the rest of the app
-            # still logs normally.
-            emitted = False
-            for h in self._passthrough:
-                try:
-                    if h.level <= record.levelno:
-                        h.handle(record)
-                        emitted = True
-                except Exception:
-                    pass
-            if not emitted and logging.lastResort is not None:
-                try:
-                    logging.lastResort.handle(record)
-                except Exception:
-                    pass
+        if name == "claude_tg_bot":
+            # Our own diagnostic log lines ("Claude launch finished with code
+            # ...", "Model unavailable ...") belong in the log FILE (--log), not
+            # on the console — otherwise they wrap and shred the status block.
+            # Their handler/file was already consulted along the chain; dropping
+            # here keeps the console clean. (They still reach claude_tg_bot's own
+            # FileHandler when logging is enabled.)
             return
-        if record.levelno < logging.WARNING:
+        if name.startswith("pyrogram"):
+            # Pyrogram connection errors/retries — keep them off the console,
+            # remember the last one for the status block.
+            if record.levelno < logging.WARNING:
+                return
+            try:
+                msg = record.getMessage()
+            except Exception:
+                return
+            with self._lock:
+                self._last_error = msg
+                self._last_error_ts = time.time()
             return
+        # Everything else — let it reach the original root handlers (or the
+        # lastResort fallback) so the rest of the app still logs normally.
+        emitted = False
+        for h in self._passthrough:
+            try:
+                if h.level <= record.levelno:
+                    h.handle(record)
+                    emitted = True
+            except Exception:
+                pass
+        if not emitted and logging.lastResort is not None:
+            try:
+                logging.lastResort.handle(record)
+            except Exception:
+                pass
         try:
             msg = record.getMessage()
         except Exception:

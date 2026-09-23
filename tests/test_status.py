@@ -55,6 +55,9 @@ class TestStatusFilter(unittest.TestCase):
         logging.getLogger("claude_tg_bot").addHandler(
             logging.FileHandler("/tmp/_status_test.log", mode="w")
         )
+        root = logging.getLogger()
+        root_handlers = list(root.handlers)
+        root_level = root.level
         try:
             st._STATUS_FILTER.install()
             buf = io.StringIO()
@@ -68,9 +71,25 @@ class TestStatusFilter(unittest.TestCase):
             self.assertNotIn("Connection failed", buf.getvalue())
             err, _ = st._STATUS_FILTER.snapshot()
             self.assertIn("Connection failed", err)
+            # claude_tg_bot diagnostics (launch errors) must not leak to stderr
+            buf2 = io.StringIO()
+            _sys.stderr = buf2
+            logging.getLogger("claude_tg_bot").error(
+                "Claude launch finished with code 1: API Error: 502"
+            )
+            _sys.stderr = real
+            self.assertNotIn("Claude launch", buf2.getvalue())
         finally:
             _sys.stderr = real
             logging.getLogger("claude_tg_bot").handlers.clear()
+            # restore root logging so we don't disturb other tests
+            for h in list(root.handlers):
+                root.removeHandler(h)
+            for h in root_handlers:
+                root.addHandler(h)
+            root.setLevel(root_level)
+            st._STATUS_FILTER._last_error = None
+            st._STATUS_FILTER._last_error_ts = 0.0
 
 
 class TestFriendly(unittest.TestCase):
