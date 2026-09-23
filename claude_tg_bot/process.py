@@ -43,10 +43,11 @@ def _get_bot_pids() -> list[int]:
         return []
     my_pid = os.getpid()
     pids: list[int] = []
-    # Match either `python ... -m claude_tg_bot` or a path to the claude_tg_bot package.
-    pattern = re.compile(
-        rf"(?i)\bpython(?:3(?:\.\d+)?)?\b.*(?:{re.escape(_BOT_MODULE)}|\b{re.escape(_BOT_MODULE)}[\\/]__main__\.py)"
-    )
+    # Match ONLY a genuine bot process whose argv starts with a python
+    # interpreter and runs `python -m claude_tg_bot` (or a path to __main__.py).
+    # This excludes wrapper processes (caffeinate -dimsu python -m claude_tg_bot,
+    # zsh/bash -c "...") that merely contain the substrings: their first token is
+    # not python, so they are not the bot and must not be "our other instance".
     for line in out.splitlines():
         parts = line.strip().split(None, 1)
         if len(parts) < 2:
@@ -58,31 +59,66 @@ def _get_bot_pids() -> list[int]:
         if pid == my_pid:
             continue
         cmd = parts[1]
-        # Exclude shell wrappers (source/heredoc/-c) so we don't catch zsh/bash.
-        if re.search(r"(^|\s)(zsh|bash|sh)(\s|$)", cmd):
-            continue
-        if pattern.search(cmd):
-            pids.append(pid)
+        # First token must be a python interpreter (e.g. "python", "/usr/bin/python3",
+        # ".../venv/bin/python") — a caffeinate/shell wrapper starts with something else.
+        first = cmd.split(None, 1)[0].lower()
+        if re.match(r"^(?:[^\s]*/)?python(?:3(?:\.\d+)?)?$", first):
+            # and it must actually launch the bot module
+            if re.search(rf"(?i)\b(?:-m\s+)?{re.escape(_BOT_MODULE)}(?:[\\/]__main__\.py)?\b|__main__\.py", cmd):
+                pids.append(pid)
     return pids
+
+
+def _pid_alive(pid: int) -> bool:
+    """Whether a process with this pid still runs (os.kill(pid,0) probe)."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+    except OSError:
+        # Signal unsupported — assume alive.
+        return True
 
 
 def _try_create_lock() -> bool:
     """Atomically create the lock file (O_CREAT|O_EXCL) with our PID.
 
-    Returns True if we got the lock. False — if the file already exists (another
-    instance is starting at the same second) and we should exit.
+    Returns True if we got the lock. False — if the file already exists and
+    belongs to a LIVE process (another instance is starting right now), and we
+    should exit. If the existing lock is ORPHANED (its pid is dead — e.g. the
+    bot was killed hard and didn't clean up), we take it over instead of being
+    blocked forever.
     """
+    def _grab() -> bool:
+        try:
+            fd = os.open(_LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except OSError:
+            return False
+        try:
+            os.write(fd, str(os.getpid()).encode())
+        finally:
+            os.close(fd)
+        return True
+
     try:
-        fd = os.open(_LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        os.write(fd, str(os.getpid()).encode())
-        os.close(fd)
-    except FileExistsError:
-        # Someone grabbed the lock right now — a race, so we block.
-        return False
+        if _grab():
+            return True
+        # The lock exists. If its pid is dead — it's stale; remove and re-take it.
+        try:
+            owner = int(_LOCK_FILE.read_text().strip())
+        except (OSError, ValueError):
+            owner = 0  # unreadable — assume stale, let the process check decide
+        if owner and not _pid_alive(owner):
+            try:
+                _LOCK_FILE.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return _grab()  # if another instance grabbed it meanwhile — False
+        return False  # owner alive — a real concurrent start, block
     except OSError:
         # Could not create it — not critical, rely on the process check.
         return True
-    return True
 
 
 def _schedule_lock_expiry(delay: float = 2.0) -> None:
