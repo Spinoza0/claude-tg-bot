@@ -164,18 +164,38 @@ def _use_color() -> bool:
     return sys.stdout.isatty()
 
 
+def _display_width(s: str) -> int:
+    """Visible width in terminal columns (emojis/wide glyphs = 2, else 1)."""
+    w = 0
+    for ch in s:
+        cp = ord(ch)
+        if cp >= 0x1F000 or 0x2500 <= cp <= 0x27BF or 0x2B00 <= cp <= 0x2BFF:
+            w += 2
+        else:
+            w += 1
+    return w
+
+
 def _fit_width(text: str) -> str:
     """Trim a line to the terminal width so it never wraps.
 
     A wrapped line would occupy a whole extra row, but _draw_status tracks the
     block height by len(lines) — so a wrap breaks the redraw (leftover text,
-    "Working" duplicates). We trim glyphs; emoji count is inexact, but a wide
-    glyph just leaves 1 spare column — no wrap. Fall back to 80 if not a tty.
+    "Working" duplicates). We trim by VISIBLE column width (emojis are 2 cols)
+    so a line can't exceed the terminal and wrap. Fall back to 80 if not a tty.
     """
     width = shutil.get_terminal_size().columns or 80
-    if len(text) <= width:
+    if _display_width(text) <= width:
         return text
-    return text[: max(0, width - 1)] + "…"
+    out: list[str] = []
+    used = 0
+    for ch in text:
+        cw = 2 if _display_width(ch) == 2 else 1
+        if used + cw > width - 1:  # reserve 1 col for the ellipsis
+            break
+        out.append(ch)
+        used += cw
+    return "".join(out) + "…"
 
 
 def _friendly(record: str) -> str:
