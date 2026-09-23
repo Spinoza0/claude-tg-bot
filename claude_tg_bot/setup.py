@@ -27,6 +27,15 @@ _CFG_PATH = _CFG_DIR / "config.env"
 # Language codes offered for BOT_LANG — the actual available files in locale/.
 BOT_LANG_CHOICES = i18n.available_langs()
 
+# Valid values for the choice settings — validated against these (Enter keeps
+# the current value if it's among them, else the default).
+DEFAULT_CHOICES = {
+    "KEEP_AWAKE": ["true", "false"],
+    "AUTO_DELETE_MEDIA": ["true", "false"],
+    "DELETE_MODE": ["trash", "permanent"],
+    "CLAUDE_PERMISSION_MODE": ["bypassPermissions", "acceptEdits", "plan", "default"],
+}
+
 GROUPS = [
     ("Language", [
         ("BOT_LANG", True, "en", "Bot language (Telegram + console)"),
@@ -46,6 +55,7 @@ GROUPS = [
         ("CLAUDE_COMMAND", True, "claude", "Claude (or wrapper) launch command, e.g. claude-cline"),
         ("COMMAND_ARGS", False, "", "Extra args for CLAUDE_COMMAND (e.g. --provider openai-compatible)"),
         ("COMMAND_ARGS_ALTERNATIVE", False, "", "Alternative args to switch the model when it is unavailable"),
+        ("CLAUDE_PERMISSION_MODE", False, "bypassPermissions", "Permission mode for -p (bypassPermissions/acceptEdits/plan/default)"),
         ("CLAUDE_SYSTEM_PROMPT", False, "", "System prompt (--append-system-prompt). Empty — default"),
     ]),
     ("Sandbox and projects", [
@@ -53,11 +63,15 @@ GROUPS = [
         ("SANDBOX_ROOT", False, "", "Sandbox folder (@helpbot). Empty — ~/.claude-tg-bot/sandbox"),
         ("PROJECTS_ROOT", True, "", "Root of projects the bot is allowed to work in"),
     ]),
+    ("Behavior / cleanup", [
+        ("AUTO_DELETE_MEDIA", False, "false", "Auto-delete an attachment after sending to claude (true/false)"),
+        ("DELETE_MODE", False, "trash", "Where to delete an attachment (trash/permanent)"),
+        ("KEEP_AWAKE", False, "false", "Keep the laptop awake while the bot runs (true/false). Prevents sleep dropping the network and making the bot stop answering"),
+    ]),
 ]
 
 # Settings not asked about (they have sensible defaults) — written as-is.
 DEFAULTS = {
-    "CLAUDE_PERMISSION_MODE": "bypassPermissions",
     "CLAUDE_TIMEOUT_SECONDS": "600",
     "MAX_PROMPT_LENGTH": "8000",
     "RETRY_LIMIT": "5",
@@ -66,9 +80,6 @@ DEFAULTS = {
     "RETRY_MULTIPLIER": "2.0",
     "MESSAGE_RETRY_LIMIT": "3",
     "MESSAGE_RETRY_DELAY": "2.0",
-    "AUTO_DELETE_MEDIA": "false",
-    "DELETE_MODE": "trash",
-    "KEEP_AWAKE": "false",
 }
 
 
@@ -206,8 +217,9 @@ def main() -> None:
         print(i18n.t("setup.group_title", title=title))
         for key, required, default, hint in settings:
             current = existing.get(key, "")
+            choices = lang_choices.get(key) or DEFAULT_CHOICES.get(key)
             values[key] = _ask(key, hint, current, default, required,
-                               choices=lang_choices.get(key))
+                               choices=choices)
             if key == "BOT_LANG" and values[key]:
                 i18n.set_lang(values[key])
             if key == "SANDBOX_COMMAND":
