@@ -170,15 +170,20 @@ CLAUDE_SYSTEM_PROMPT: str = os.getenv("CLAUDE_SYSTEM_PROMPT", "").strip()
 # text to override it.
 ATTACHMENT_SYSTEM_PROMPT: str = (
     os.getenv("ATTACHMENT_SYSTEM_PROMPT", "").strip()
-    or "When you create a file that should be sent back as an attachment "
-       "(an image, video, audio or any other file, not just code), save it into "
-       "the '.claude_tg_bot_media' subfolder of the current working directory "
-       "and, in your final answer, print a marker line on its own:\n"
+    or "Attachments rule. When you finish and a result file should be sent back "
+       "to the user as an attachment (an image, video, audio or any other file, "
+       "not just code), you MUST:\n"
+       "1. Save that file into the '.claude_tg_bot_media' subfolder of the current "
+       "working directory. Never save it to /tmp, the home directory or anywhere "
+       "else outside this folder.\n"
+       "2. In your FINAL answer, print the path to it as a marker line, one per "
+       "file, exactly on its own line:\n"
        "[FILE: <relative-path-inside-.claude_tg_bot_media>]\n"
-       "Replace <relative-path> with the actual file path relative to the "
-       "working directory. You may print several such lines, one per file. Do "
-       "NOT print this marker for files that are not meant to be sent as "
-       "attachments."
+       "Use the path relative to the current working directory (e.g. "
+       "'.claude_tg_bot_media/frame.png'). Do NOT use an absolute /tmp path. "
+       "Print one such line for each file you want to send. Only files saved in "
+       "'.claude_tg_bot_media' are sent; anything you save elsewhere is not. "
+       "If you created no file to send, print nothing."
 )
 
 # The root within which the bot may create/switch projects.

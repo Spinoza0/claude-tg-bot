@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pyrogram.types import Message
 
-from . import config
+from . import config, i18n
 from .retry import _run_with_retry
 
 # Telegram caps one message at 4096 chars. Keep a margin and split on paragraph
@@ -91,15 +91,21 @@ async def _send_attachment(client, message: Message, path):
     Uses the same retry mechanism as text (transient Telegram errors). Returns
     None on success; on an unrecoverable error returns an error string (so the
     caller can inform the user without breaking the rest of the handling).
+
+    _run_with_retry returns the sent Message on success, or None when every
+    attempt failed — so we map it to (success -> None, failure -> error text).
     """
     kind = _attachment_kind(str(path))
-    return await _run_with_retry(
+    sent = await _run_with_retry(
         lambda: _send_attachment_once(client, message, path, kind),
         limit=config.MESSAGE_RETRY_LIMIT,
         base_delay=config.MESSAGE_RETRY_DELAY,
         multiplier=1.0,
         max_delay=config.MESSAGE_RETRY_DELAY,
     )
+    if sent is None:  # every attempt failed
+        return i18n.t("handlers.attachment_send_failed")
+    return None
 
 
 async def _send_attachment_once(client, message: Message, path, kind: str):

@@ -45,6 +45,7 @@
   "handlers.attachment_invalid_path": "⚠️ Вложение пропущено (вне рабочей директории): {path}",
   "handlers.attachment_missing": "⚠️ Файл вложения не найден: {path}",
   "handlers.attachment_error": "⚠️ Не удалось отправить вложение {path}: {e}",
+  "handlers.attachment_send_failed": "Telegram не принял файл (после нескольких попыток).",
   "handlers.run_error": "Ошибка Claude (код {code})",
   "handlers.select_project": "Сначала выбери проект: /list или /new <имя>",
   "handlers.download_fail": "Не удалось скачать {kind}: {e}",

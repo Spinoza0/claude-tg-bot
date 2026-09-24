@@ -45,6 +45,7 @@
   "handlers.attachment_invalid_path": "⚠️ Skipped attachment (outside the working directory): {path}",
   "handlers.attachment_missing": "⚠️ Attachment file not found: {path}",
   "handlers.attachment_error": "⚠️ Could not send attachment {path}: {e}",
+  "handlers.attachment_send_failed": "Telegram did not accept the file (after several attempts).",
   "handlers.run_error": "Claude error (code {code})",
   "handlers.select_project": "First choose a project: /list or /new <name>",
   "handlers.download_fail": "Could not download {kind}: {e}",
