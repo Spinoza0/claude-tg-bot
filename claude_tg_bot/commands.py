@@ -1,6 +1,6 @@
 """Bot command handling: /start /list /switch /new /status /kill /clean /help.
 
-Plus the attachment-cleanup commands (/clearmedia, /mediasize), called both
+Plus the attachment-cleanup commands (/clearattach, /attachsize), called both
 directly and automatically from /clear (see handlers.on_chat).
 """
 
@@ -13,14 +13,14 @@ from .runner import format_command_hint
 from .sessions import find_latest_session, is_safe_project_name, store
 from .access import _author
 from .process import _active_tasks, _bot_proc_pids, kill_bot_procs
-from .media import _delete_path, _dir_size, _fmt_bytes
+from .attach import _delete_path, _dir_size, _fmt_bytes
 from .reply import _reply
 
 # Reserved slash commands handled by on_command (lowercase, without the '/').
 # Used to validate that SANDBOX_COMMAND never shadows a bot command (see setup.py).
 RESERVED_COMMANDS = {
     "start", "help", "list", "switch", "new", "status", "lang",
-    "kill", "clearmedia", "mediasize",
+    "kill", "clearattach", "attachsize",
 }
 
 
@@ -144,22 +144,22 @@ async def on_command(client, message: Message, text: str, sandbox: bool = False)
             msg += i18n.t("cmd.kill_failed", errs=errs)
         await _reply(message, msg)
 
-    elif cmd == "/clearmedia":
-        # Delete downloaded attachments (.claude_tg_bot_media) in the current dir.
+    elif cmd == "/clearattach":
+        # Delete downloaded attachments (.claude_tg_bot_attach) in the current dir.
         # To trash or permanently — per DELETE_MODE. Report how many were deleted.
-        await _clear_media(message, active, sandbox=sandbox, root=str(root))
+        await _clear_attach(message, active, sandbox=sandbox, root=str(root))
 
-    elif cmd == "/mediasize":
-        await _media_size(message, active, root=str(root))
+    elif cmd == "/attachsize":
+        await _attach_size(message, active, root=str(root))
 
     else:
         return
 
 
-async def _clear_media(message, active: str, sandbox: bool = False, root: str = "", silent: bool = False):
-    """/clearmedia command: delete the current project's downloaded attachments.
+async def _clear_attach(message, active: str, sandbox: bool = False, root: str = "", silent: bool = False):
+    """/clearattach command: delete the current project's downloaded attachments.
 
-    Removes the .claude_tg_bot_media subfolder inside the active directory as a
+    Removes the .claude_tg_bot_attach subfolder inside the active directory as a
     whole (including an empty one — so no traces stay), per DELETE_MODE. Counts
     how many files and how much space is freed.
 
@@ -168,53 +168,53 @@ async def _clear_media(message, active: str, sandbox: bool = False, root: str = 
     clean"). If the folder was empty — delete it and report that too.
     """
     base = Path(active) if active else Path(root)
-    media_dir = base / ".claude_tg_bot_media"
+    attach_dir = base / ".claude_tg_bot_attach"
 
-    if not media_dir.exists():
+    if not attach_dir.exists():
         if not silent:
-            await _reply(message, i18n.t("cmd.clear_none"))
+            await _reply(message, i18n.t("cmd.clear_attach_none"))
         return
 
-    files = [p for p in media_dir.rglob("*") if p.is_file()]
+    files = [p for p in attach_dir.rglob("*") if p.is_file()]
     count = len(files)
-    size = _dir_size(media_dir)
+    size = _dir_size(attach_dir)
     free = _fmt_bytes(size)
 
     mode = (config.DELETE_MODE or "trash").lower()
     where = i18n.t("cmd.trash") if mode == "trash" else i18n.t("cmd.permanent")
 
     try:
-        _delete_path(media_dir, mode)
+        _delete_path(attach_dir, mode)
     except Exception as e:
-        await _reply(message, i18n.t("cmd.clear_err", e=e))
+        await _reply(message, i18n.t("cmd.clear_attach_err", e=e))
         return
 
     if count:
         await _reply(
             message,
-            i18n.t("cmd.clear_done", count=count, size=free, where=where, path=media_dir),
+            i18n.t("cmd.clear_attach_done", count=count, size=free, where=where, path=attach_dir),
         )
     else:
-        await _reply(message, i18n.t("cmd.clear_empty_done", path=media_dir))
+        await _reply(message, i18n.t("cmd.clear_attach_empty_done", path=attach_dir))
 
 
-async def _media_size(message, active: str, root: str = ""):
-    """/mediasize command: show the count and size of downloaded attachments.
+async def _attach_size(message, active: str, root: str = ""):
+    """/attachsize command: show the count and size of downloaded attachments.
 
-    Deletes nothing — only a report over the active directory's .claude_tg_bot_media.
+    Deletes nothing — only a report over the active directory's .claude_tg_bot_attach.
     """
     base = Path(active) if active else Path(root)
-    media_dir = base / ".claude_tg_bot_media"
+    attach_dir = base / ".claude_tg_bot_attach"
 
-    if not media_dir.exists() or not any(media_dir.iterdir()):
-        await _reply(message, i18n.t("cmd.media_none"))
+    if not attach_dir.exists() or not any(attach_dir.iterdir()):
+        await _reply(message, i18n.t("cmd.attach_size_none"))
         return
 
-    files = [p for p in media_dir.rglob("*") if p.is_file()]
+    files = [p for p in attach_dir.rglob("*") if p.is_file()]
     count = len(files)
-    size = _dir_size(media_dir)
+    size = _dir_size(attach_dir)
 
     await _reply(
         message,
-        i18n.t("cmd.media_size", count=count, size=_fmt_bytes(size), path=media_dir),
+        i18n.t("cmd.attach_size", count=count, size=_fmt_bytes(size), path=attach_dir),
     )

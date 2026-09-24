@@ -42,7 +42,7 @@ class TestBehaviorFlags(unittest.TestCase):
 
     def test_flags_in_groups(self):
         group_keys = {k for g in GROUPS for k, _r, _d, _h in g[1]}
-        for key in ("KEEP_AWAKE", "AUTO_DELETE_MEDIA", "DELETE_MODE", "CLAUDE_PERMISSION_MODE"):
+        for key in ("KEEP_AWAKE", "AUTO_DELETE_ATTACH", "DELETE_MODE", "CLAUDE_PERMISSION_MODE"):
             self.assertIn(key, group_keys)
 
     def test_every_choice_setting_has_choices(self):

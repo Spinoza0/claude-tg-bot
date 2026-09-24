@@ -1,7 +1,7 @@
 """Telegram message handlers: sandbox, attachments, regular chat, launching Claude.
 
 The central "orchestrator" tying together project work (commands), attachments
-(media), the sandbox (sandbox) and Claude launch (runner/sessions).
+(attachment), the sandbox (sandbox) and Claude launch (runner/sessions).
 """
 
 import asyncio
@@ -21,14 +21,14 @@ from .sessions import find_latest_session, store
 from .access import _allowed, _author, _is_allowed_user
 from .process import _active_tasks, _bot_proc_pids, _start_bg
 from .retry import _retry_backoff_delay, _run_with_retry
-from .commands import _clear_media, on_command
-from .media import (
+from .commands import _clear_attach, on_command
+from .attach import (
     _delete_path,
-    _has_any_media,
-    _media_ext,
-    _media_type_name,
+    _has_any_attach,
+    _attach_ext,
+    _attach_type_name,
     _sniff_image_ext,
-    _textual_media_prompt,
+    _textual_attach_prompt,
 )
 from .reply import _reply, _send_attachment, _send_split, _send_with_retry
 from .runner import extract_file_markers
@@ -67,10 +67,10 @@ async def on_sandbox(client, message: Message):
         return
 
     rest = _strip_sandbox_prefix(message.text or (message.caption or ""))
-    has_media = _has_any_media(message)
+    has_attach = _has_any_attach(message)
 
     # Empty and no attachment — nothing to process, ignore silently.
-    if not rest.strip() and not has_media:
+    if not rest.strip() and not has_attach:
         return
 
     # The remainder starts with '/' — it's a bot command (or /clear for claude).
@@ -85,7 +85,7 @@ async def on_sandbox(client, message: Message):
         return
 
     # Plain text or attachment (photo/video/document): go to claude in SANDBOX_ROOT.
-    if has_media:
+    if has_attach:
         # Pass the stripped remainder as the caption (in caption it still has '@helpbot').
         g = getattr
         if g(message, "photo", None):
@@ -102,10 +102,10 @@ async def on_sandbox(client, message: Message):
             await on_sticker(client, message, sandbox=True, prompt_override=rest)
         elif g(message, "poll", None) or g(message, "location", None) \
                 or g(message, "venue", None) or g(message, "contact", None):
-            await _handle_textual_media(client, message, sandbox=True)
+            await _handle_textual_attach(client, message, sandbox=True)
         else:
             # Unknown attachment type under @helpbot — tell the user we can't.
-            await _on_unknown_media(client, message)
+            await _on_unknown_attach(client, message)
     else:
         await on_chat(client, message, rest, sandbox=True)
 
@@ -128,8 +128,8 @@ async def on_all_message(client, message: Message):
     # the chat. Regular messages — via _allowed (user + chat).
     text = (message.text or "").strip()
     caption = (message.caption or "").strip()
-    has_media = _has_any_media(message)
-    if _is_sandbox_message(text) or (has_media and _is_sandbox_message(caption)):
+    has_attach = _has_any_attach(message)
+    if _is_sandbox_message(text) or (has_attach and _is_sandbox_message(caption)):
         if not _is_allowed_user(user_id):
             return
         await on_sandbox(client, message)
@@ -161,16 +161,16 @@ async def on_all_message(client, message: Message):
     if g(message, "poll", None) or g(message, "location", None) \
             or g(message, "venue", None) or g(message, "contact", None):
         # Poll/geo/contact: no file, but there is data → a textual description for claude.
-        await _handle_textual_media(client, message)
+        await _handle_textual_attach(client, message)
         return
     # Unknown/undetected attachment type — tell "can't process it".
-    if _has_any_media(message):
-        await _on_unknown_media(client, message)
+    if _has_any_attach(message):
+        await _on_unknown_attach(client, message)
         return
     # /clear — not a bot command but a prompt for claude (claude handles it itself).
     # Therefore we send it to on_chat, not on_command.
     # IMPORTANT: compare EXACTLY (cmd == "/clear"), not startswith("/clear"),
-    # otherwise it clashes with /clearmedia (it also starts with /clear).
+    # otherwise it clashes with /clearattach (it also starts with /clear).
     first = text.split()[0].lower() if text.split() else ""
     if first == "/clear":
         await on_chat(client, message, text)
@@ -215,7 +215,7 @@ async def on_chat(client, message: Message, text: str, sandbox: bool = False):
     if text.split()[0].lower() == "/clear":
         root = config.SANDBOX_ROOT if sandbox else config.PROJECTS_ROOT
         # silent: if there's no attachments folder — go on silently to Claude.
-        await _clear_media(message, project_root, sandbox=sandbox, root=str(root), silent=True)
+        await _clear_attach(message, project_root, sandbox=sandbox, root=str(root), silent=True)
 
     # We don't pass session_id — _run_and_reply finds the latest session of the
     # directory itself and does --resume, or starts a new one.
@@ -228,9 +228,9 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
     Before processing we send "working", remember its id, and when claude has
     answered — delete "working" and send the reply. This signals the bot is alive,
     not hung. image_paths — temporary attachments (images) inside the project.
-    After processing they're deleted only if AUTO_DELETE_MEDIA is on (per
-    DELETE_MODE), otherwise they stay in .claude_tg_bot_media until a manual
-    /clearmedia.
+    After processing they're deleted only if AUTO_DELETE_ATTACH is on (per
+    DELETE_MODE), otherwise they stay in .claude_tg_bot_attach until a manual
+    /clearattach.
 
     cwd — Claude's working directory. By default st.project_root (the active
     project). For @helpbot config.SANDBOX_ROOT (the sandbox) is passed.
@@ -374,9 +374,9 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
             await _cleanup_busy()
             await _send_with_retry(message, i18n.t("handlers.error", e=e))
     finally:
-        # Auto-delete the attachments. If AUTO_DELETE_MEDIA is off — we do NOT
-        # delete: the files stay in the project, cleaned manually via /clearmedia.
-        if config.AUTO_DELETE_MEDIA:
+        # Auto-delete the attachments. If AUTO_DELETE_ATTACH is off — we do NOT
+        # delete: the files stay in the project, cleaned manually via /clearattach.
+        if config.AUTO_DELETE_ATTACH:
             for p in image_paths or []:
                 try:
                     _delete_path(Path(p))
@@ -384,9 +384,9 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
                     pass
             # Tidy up the empty attachments subfolder if it became empty.
             try:
-                media_dir = project / ".claude_tg_bot_media"
-                if media_dir.exists() and not any(media_dir.iterdir()):
-                    media_dir.rmdir()
+                attach_dir = project / ".claude_tg_bot_attach"
+                if attach_dir.exists() and not any(attach_dir.iterdir()):
+                    attach_dir.rmdir()
             except Exception:
                 pass
 
@@ -394,7 +394,7 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
 def _resolve_attachment_path(project: Path, raw: str):
     """Resolve a marker path against the working dir, never escaping it.
 
-    The marker may be relative ("img.png", ".claude_tg_bot_media/img.png") —
+    The marker may be relative ("img.png", ".claude_tg_bot_attach/img.png") —
     resolved against `project`. Absolute paths or ones that climb out of the
     working dir (via "..") are rejected (return None) so we can't be tricked
     into sending an arbitrary file of the system.
@@ -456,7 +456,7 @@ async def _handle_attachment(
     We place the file inside the active project (not /tmp) so the @path in the
     prompt is guaranteed to be read by claude as an attachment (the attachment
     must be in the process's cwd). After processing it's deleted only if
-    AUTO_DELETE_MEDIA is on, otherwise the file stays (cleanup via /clearmedia).
+    AUTO_DELETE_ATTACH is on, otherwise the file stays (cleanup via /clearattach).
 
     The caption becomes the prompt. If there's no caption — we go to claude with
     an EMPTY prompt: it sees the @attachment itself and keeps it in the session
@@ -468,7 +468,7 @@ async def _handle_attachment(
     the availability of external utilities in advance and don't refuse — we just
     hand the file over and claude sorts it out.
 
-    media — the attachment object (photo/video/audio/voice/document).
+    attachment — the attachment object (photo/video/audio/voice/document).
     kind — the human name ("photo", "video", "audio", "file").
     ext — the file extension (.jpg, .mp4, .mp3, .pdf, ...).
     sniff_ext — for photos: after download, detect the real extension by content
@@ -494,8 +494,8 @@ async def _handle_attachment(
         project = Path(st.project_root)
 
     # A subfolder inside the project for temporary attachments (deleted with the file)
-    media_dir = project / ".claude_tg_bot_media"
-    media_dir.mkdir(parents=True, exist_ok=True)
+    attach_dir = project / ".claude_tg_bot_attach"
+    attach_dir.mkdir(parents=True, exist_ok=True)
 
     caption = prompt_override if prompt_override is not None else (message.caption or "").strip()
 
@@ -503,27 +503,27 @@ async def _handle_attachment(
     # real one by content and rename — so the @path and the type are correct.
     download_ext = ".img" if sniff_ext else ext
     fname = f"claude_tg_bot_{kind}_{time.time_ns()}{download_ext}"
-    media_path = media_dir / fname
+    attach_path = attach_dir / fname
 
     try:
-        await message.download(file_name=str(media_path))
+        await message.download(file_name=str(attach_path))
     except Exception as e:
         await _reply(message, i18n.t("handlers.download_fail", kind=kind, e=e))
         return
 
     if sniff_ext:
-        real_ext = _sniff_image_ext(media_path)
+        real_ext = _sniff_image_ext(attach_path)
         if real_ext != download_ext:
-            renamed = media_path.with_suffix(real_ext)
+            renamed = attach_path.with_suffix(real_ext)
             try:
-                media_path.rename(renamed)
-                media_path = renamed
+                attach_path.rename(renamed)
+                attach_path = renamed
             except OSError:
                 pass  # couldn't rename — keep as downloaded
 
     if caption.startswith("/"):
         # The caption is a command (e.g. /status): handle it, the attachment is irrelevant.
-        media_path.unlink(missing_ok=True)
+        attach_path.unlink(missing_ok=True)
         await on_command(client, message, caption, sandbox=sandbox)
         return
 
@@ -532,33 +532,33 @@ async def _handle_attachment(
     # itself and keeps it in the session context (no placeholder). We process in
     # the background so subsequent messages aren't blocked.
     # A single algorithm: _run_and_reply resolves the directory's latest session itself.
-    _start_bg(_run_and_reply(client, message, st, caption, [media_path], cwd=str(project)))
+    _start_bg(_run_and_reply(client, message, st, caption, [attach_path], cwd=str(project)))
 
 
 async def on_photo(client, message: Message, sandbox: bool = False, prompt_override: Optional[str] = None):
     """Detection by the downloaded file's content (PNG/JPEG/WebP/GIF), since the
     Pyrogram photo object carries no file_name/mime_type. Fallback — .jpg, so
     claude always sees an image."""
-    media = message.photo
-    if media is None:
+    att = message.photo
+    if att is None:
         return
-    await _handle_attachment(client, message, i18n.t("media.type_photo"), ".jpg", sandbox, prompt_override, sniff_ext=True)
+    await _handle_attachment(client, message, i18n.t("attach.type_photo"), ".jpg", sandbox, prompt_override, sniff_ext=True)
 
 
 async def on_audio(client, message: Message, sandbox: bool = False, prompt_override: Optional[str] = None):
     """Handle audio/voice → claude (it transcribes/parses it itself)."""
-    media = message.audio or message.voice
-    if media is None:
+    att = message.audio or message.voice
+    if att is None:
         return
-    await _handle_attachment(client, message, i18n.t("media.type_audio"), _media_ext(media), sandbox, prompt_override)
+    await _handle_attachment(client, message, i18n.t("attach.type_audio"), _attach_ext(att), sandbox, prompt_override)
 
 
 async def on_video(client, message: Message, sandbox: bool = False, prompt_override: Optional[str] = None):
     """Handle video → claude (it extracts frames and parses it itself)."""
-    media = message.video
-    if media is None:
+    att = message.video
+    if att is None:
         return
-    await _handle_attachment(client, message, i18n.t("media.type_video"), _media_ext(media), sandbox, prompt_override)
+    await _handle_attachment(client, message, i18n.t("attach.type_video"), _attach_ext(att), sandbox, prompt_override)
 
 
 async def on_video_note(client, message: Message, sandbox: bool = False, prompt_override: Optional[str] = None):
@@ -568,21 +568,21 @@ async def on_video_note(client, message: Message, sandbox: bool = False, prompt_
     extracts frames and parses the content itself. The extension — by mime
     (usually .mp4).
     """
-    media = message.video_note
-    if media is None:
+    att = message.video_note
+    if att is None:
         return
-    ext = _media_ext(media)
+    ext = _attach_ext(att)
     if ext == ".bin":  # a circle has no file_name; without mime assume .mp4
         ext = ".mp4"
-    await _handle_attachment(client, message, i18n.t("media.type_video_note"), ext, sandbox, prompt_override)
+    await _handle_attachment(client, message, i18n.t("attach.type_video_note"), ext, sandbox, prompt_override)
 
 
 async def on_document(client, message: Message, sandbox: bool = False, prompt_override: Optional[str] = None):
     """Handle an arbitrary file (document/GIF animation) → claude."""
-    media = message.document or message.animation
-    if media is None:
+    att = message.document or message.animation
+    if att is None:
         return
-    await _handle_attachment(client, message, i18n.t("media.type_file"), _media_ext(media), sandbox, prompt_override)
+    await _handle_attachment(client, message, i18n.t("attach.type_file"), _attach_ext(att), sandbox, prompt_override)
 
 
 async def on_sticker(client, message: Message, sandbox: bool = False, prompt_override: Optional[str] = None):
@@ -591,28 +591,28 @@ async def on_sticker(client, message: Message, sandbox: bool = False, prompt_ove
     A sticker is a file (.webp/.tgs/.webm); we download and hand it to claude — it
     sees the image itself. If there's no caption — go to claude with an empty prompt.
     """
-    media = message.sticker
-    if media is None:
+    att = message.sticker
+    if att is None:
         return
-    ext = _media_ext(media)
+    ext = _attach_ext(att)
     if ext == ".bin":  # a sticker without mime — usually .webp
         ext = ".webp"
-    await _handle_attachment(client, message, i18n.t("media.type_sticker"), ext, sandbox, prompt_override)
+    await _handle_attachment(client, message, i18n.t("attach.type_sticker"), ext, sandbox, prompt_override)
 
 
-async def _handle_textual_media(client, message, sandbox: bool = False):
-    """Send a textual description of media (poll/geo/contact) to claude.
+async def _handle_textual_attach(client, message, sandbox: bool = False):
+    """Send a textual description of an attachment (poll/geo/contact) to claude.
 
     on_chat launches claude as a background task itself (_start_bg inside), so
     here we only build the prompt and hand it to on_chat.
     """
-    prompt = _textual_media_prompt(message)
+    prompt = _textual_attach_prompt(message)
     if not prompt:
         return
     await on_chat(client, message, prompt, sandbox=sandbox)
 
 
-async def _on_unknown_media(client, message: Message):
+async def _on_unknown_attach(client, message: Message):
     """Unknown attachment type: tell "can't process it" + show the type."""
-    kind = _media_type_name(message) or i18n.t("media.type_unknown")
-    await _reply(message, i18n.t("handlers.unknown_media", kind=kind))
+    kind = _attach_type_name(message) or i18n.t("attach.type_unknown")
+    await _reply(message, i18n.t("handlers.unknown_attach", kind=kind))

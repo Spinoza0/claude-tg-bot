@@ -17,7 +17,7 @@ from types import SimpleNamespace
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from claude_tg_bot import handlers, media, reply, sandbox  # noqa: E402
+from claude_tg_bot import handlers, attach, reply, sandbox  # noqa: E402
 
 
 class TestAgentParsing(unittest.TestCase):
@@ -61,20 +61,20 @@ class TestMediaExt(unittest.TestCase):
     """Attachment extension detection."""
 
     def test_extension_from_filename(self):
-        self.assertEqual(media._media_ext(_FakeMedia("clip.mp4", "video/mp4")), ".mp4")
-        self.assertEqual(media._media_ext(_FakeMedia("pic.JPG", "image/jpeg")), ".jpg")
-        self.assertEqual(media._media_ext(_FakeMedia("song.MP3", "audio/mpeg")), ".mp3")
+        self.assertEqual(attach._attach_ext(_FakeMedia("clip.mp4", "video/mp4")), ".mp4")
+        self.assertEqual(attach._attach_ext(_FakeMedia("pic.JPG", "image/jpeg")), ".jpg")
+        self.assertEqual(attach._attach_ext(_FakeMedia("song.MP3", "audio/mpeg")), ".mp3")
 
     def test_extension_from_mime(self):
-        self.assertEqual(media._media_ext(_FakeMedia(None, "video/webm")), ".webm")
-        self.assertEqual(media._media_ext(_FakeMedia(None, "audio/ogg")), ".ogg")
-        self.assertEqual(media._media_ext(_FakeMedia(None, "application/pdf")), ".pdf")
+        self.assertEqual(attach._attach_ext(_FakeMedia(None, "video/webm")), ".webm")
+        self.assertEqual(attach._attach_ext(_FakeMedia(None, "audio/ogg")), ".ogg")
+        self.assertEqual(attach._attach_ext(_FakeMedia(None, "application/pdf")), ".pdf")
 
     def test_extension_default_bin(self):
-        self.assertEqual(media._media_ext(_FakeMedia(None, None)), ".bin")
+        self.assertEqual(attach._attach_ext(_FakeMedia(None, None)), ".bin")
 
     def test_extension_filename_without_dot(self):
-        self.assertEqual(media._media_ext(_FakeMedia("noext", "image/png")), ".png")
+        self.assertEqual(attach._attach_ext(_FakeMedia("noext", "image/png")), ".png")
 
 
 class TestSniffImageExt(unittest.TestCase):
@@ -90,23 +90,23 @@ class TestSniffImageExt(unittest.TestCase):
 
     def test_png(self):
         p = self._write(b"\x89PNG\r\n\x1a\nrest")
-        self.assertEqual(media._sniff_image_ext(p), ".png")
+        self.assertEqual(attach._sniff_image_ext(p), ".png")
 
     def test_jpg(self):
         p = self._write(b"\xff\xd8\xff\xe0rest")
-        self.assertEqual(media._sniff_image_ext(p), ".jpg")
+        self.assertEqual(attach._sniff_image_ext(p), ".jpg")
 
     def test_webp(self):
         p = self._write(b"RIFFxxxxWEBPdata")
-        self.assertEqual(media._sniff_image_ext(p), ".webp")
+        self.assertEqual(attach._sniff_image_ext(p), ".webp")
 
     def test_gif(self):
         p = self._write(b"GIF89a....")
-        self.assertEqual(media._sniff_image_ext(p), ".gif")
+        self.assertEqual(attach._sniff_image_ext(p), ".gif")
 
     def test_unknown_fallback_jpg(self):
         p = self._write(b"not-an-image-at-all")
-        self.assertEqual(media._sniff_image_ext(p), ".jpg")
+        self.assertEqual(attach._sniff_image_ext(p), ".jpg")
 
 
 class _FlakyMessage:
@@ -146,7 +146,7 @@ class TestSplitRouting(unittest.TestCase):
     """Separate handlers (photo/video/audio/file) route correctly.
 
     on_photo should go to _handle_attachment with sniff_ext=True, while
-    on_video/on_audio/on_document use their own extension from _media_ext. We
+    on_video/on_audio/on_document use their own extension from _attach_ext. We
     verify this via delegation to _handle_attachment (mocked).
     """
 
@@ -200,7 +200,7 @@ class TestSplitRouting(unittest.TestCase):
 
 
 class TestTextualMediaPrompt(unittest.TestCase):
-    """_textual_media_prompt builds a description for a poll/geo/contact."""
+    """_textual_attach_prompt builds a description for a poll/geo/contact."""
 
     def _msg(self, **kw):
         d = dict(photo=None, video=None, video_note=None, audio=None, voice=None,
@@ -216,24 +216,24 @@ class TestTextualMediaPrompt(unittest.TestCase):
 
     def test_poll(self):
         p = self._poll("How are you?", ["Great", "Fine"])
-        prompt = media._textual_media_prompt(self._msg(poll=p))
+        prompt = attach._textual_attach_prompt(self._msg(poll=p))
         self.assertIn("How are you?", prompt)
         self.assertIn("Great", prompt)
         self.assertIn("Fine", prompt)
 
     def test_contact(self):
         c = SimpleNamespace(first_name="John", last_name="Doe", phone_number="+12345678900")
-        prompt = media._textual_media_prompt(self._msg(contact=c))
+        prompt = attach._textual_attach_prompt(self._msg(contact=c))
         self.assertIn("John", prompt)
         self.assertIn("12345678900", prompt)
 
     def test_location(self):
         loc = SimpleNamespace(latitude=55.75, longitude=37.61)
-        prompt = media._textual_media_prompt(self._msg(location=loc))
+        prompt = attach._textual_attach_prompt(self._msg(location=loc))
         self.assertIn("55.75", prompt)
 
     def test_none_for_other(self):
-        self.assertIsNone(media._textual_media_prompt(self._msg(photo=object())))
+        self.assertIsNone(attach._textual_attach_prompt(self._msg(photo=object())))
 
 
 class TestStickerAsFile(unittest.TestCase):

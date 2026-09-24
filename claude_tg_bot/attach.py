@@ -30,18 +30,18 @@ _MIME_EXT = {
 }
 
 
-def _media_ext(media) -> str:
+def _attach_ext(att) -> str:
     """Extension for a downloaded attachment (Claude infers its type from it).
 
     Priority: extension from file_name (if any) → else from mime_type →
     else the ".bin" default. Voice has no file_name, so its mime_type is used.
     """
-    fname = getattr(media, "file_name", None)
+    fname = getattr(att, "file_name", None)
     if fname and "." in fname:
         suffix = Path(fname).suffix.lower()
         if suffix:
             return suffix
-    mime = getattr(media, "mime_type", None)
+    mime = getattr(att, "mime_type", None)
     if mime:
         ext = _MIME_EXT.get(mime.lower())
         if ext:
@@ -126,7 +126,7 @@ def _fmt_bytes(n: int) -> str:
     return f"{n} {i18n.t('uni.B')}"
 
 
-def _has_any_media(message) -> bool:
+def _has_any_attach(message) -> bool:
     g = getattr
     return bool(
         g(message, "photo", None) or g(message, "video", None)
@@ -142,7 +142,7 @@ def _has_any_media(message) -> bool:
     )
 
 
-def _media_type_name(message) -> str:
+def _attach_type_name(message) -> str:
     """A human name for the attachment type, for the "can't process" message.
 
     For recognized photo/video/audio/file the exact name is returned; for others
@@ -150,40 +150,40 @@ def _media_type_name(message) -> str:
     """
     g = getattr
     if g(message, "photo", None):
-        return i18n.t("media.type_photo")
+        return i18n.t("attach.type_photo")
     if g(message, "video", None):
-        return i18n.t("media.type_video")
+        return i18n.t("attach.type_video")
     if g(message, "video_note", None):
-        return i18n.t("media.type_video_note")
+        return i18n.t("attach.type_video_note")
     if g(message, "audio", None):
-        return i18n.t("media.type_audio")
+        return i18n.t("attach.type_audio")
     if g(message, "voice", None):
-        return i18n.t("media.type_voice")
+        return i18n.t("attach.type_voice")
     if g(message, "document", None):
-        return i18n.t("media.type_file")
+        return i18n.t("attach.type_file")
     if g(message, "animation", None):
-        return i18n.t("media.type_animation")
+        return i18n.t("attach.type_animation")
     if g(message, "sticker", None):
-        return i18n.t("media.type_sticker")
+        return i18n.t("attach.type_sticker")
     if g(message, "contact", None):
-        return i18n.t("media.type_contact")
+        return i18n.t("attach.type_contact")
     if g(message, "location", None) or g(message, "venue", None):
-        return i18n.t("media.type_location")
+        return i18n.t("attach.type_location")
     if g(message, "poll", None):
-        return i18n.t("media.type_poll")
+        return i18n.t("attach.type_poll")
     if g(message, "dice", None) or g(message, "game", None):
-        return i18n.t("media.type_game")
+        return i18n.t("attach.type_game")
     if g(message, "web_app_data", None):
-        return i18n.t("media.type_webapp")
+        return i18n.t("attach.type_webapp")
     if g(message, "paid_media", None):
-        return i18n.t("media.type_paid")
-    return i18n.t("media.type_unknown")
+        return i18n.t("attach.type_paid")
+    return i18n.t("attach.type_unknown")
 
 
-def _textual_media_prompt(message) -> "str | None":
-    """Build a textual description for file-less media (poll/geo/contact).
+def _textual_attach_prompt(message) -> "str | None":
+    """Build a textual description for file-less attachments (poll/geo/contact).
 
-    Returns a ready prompt or None if the type is not textual media. Needed so
+    Returns a ready prompt or None if the type is not a textual attachment. Needed so
     claude understands what the user sent and answers to the point.
     """
     g = getattr
