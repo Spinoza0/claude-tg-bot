@@ -162,6 +162,25 @@ COMMAND_ARGS_ALTERNATIVE: str = os.getenv("COMMAND_ARGS_ALTERNATIVE", "").strip(
 # with its standard system prompt.
 CLAUDE_SYSTEM_PROMPT: str = os.getenv("CLAUDE_SYSTEM_PROMPT", "").strip()
 
+# ATTACHMENT_SYSTEM_PROMPT — how to mark files Claude creates as attachments to
+# send back (save the result into .claude_tg_bot_media and print a "[FILE: path]"
+# marker line). Added to the Claude call right after CLAUDE_SYSTEM_PROMPT as a
+# second --append-system-prompt (both reach the model). An empty/absent value
+# falls back to the built-in instruction below (attachments stay on); set the
+# text to override it.
+ATTACHMENT_SYSTEM_PROMPT: str = (
+    os.getenv("ATTACHMENT_SYSTEM_PROMPT", "").strip()
+    or "When you create a file that should be sent back as an attachment "
+       "(an image, video, audio or any other file, not just code), save it into "
+       "the '.claude_tg_bot_media' subfolder of the current working directory "
+       "and, in your final answer, print a marker line on its own:\n"
+       "[FILE: <relative-path-inside-.claude_tg_bot_media>]\n"
+       "Replace <relative-path> with the actual file path relative to the "
+       "working directory. You may print several such lines, one per file. Do "
+       "NOT print this marker for files that are not meant to be sent as "
+       "attachments."
+)
+
 # The root within which the bot may create/switch projects.
 # We don't let the bot work with arbitrary paths — a sandbox.
 PROJECTS_ROOT: Path = Path(

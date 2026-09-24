@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shlex
 import signal
 import sys
@@ -76,6 +77,11 @@ def _build_command(
         cmd += ["--permission-mode", config.CLAUDE_PERMISSION_MODE]
     if config.CLAUDE_SYSTEM_PROMPT:
         cmd += ["--append-system-prompt", config.CLAUDE_SYSTEM_PROMPT]
+    # The attachment-marker instruction — a separate system prompt added after
+    # CLAUDE_SYSTEM_PROMPT so both reach the model (Claude concatenates repeated
+    # --append-system-prompt flags). Only present when set.
+    if config.ATTACHMENT_SYSTEM_PROMPT:
+        cmd += ["--append-system-prompt", config.ATTACHMENT_SYSTEM_PROMPT]
     cmd += [
         "--output-format", "stream-json",
         "--verbose",
@@ -349,6 +355,35 @@ def _read_proxy_log(proc_pid: int) -> str:
 # ---------------------------------------------------------------------------
 # Utilities for Telegram handlers
 # ---------------------------------------------------------------------------
+
+# A marker line Claude prints in its answer for each file to send back as an
+# attachment (see config.ATTACHMENT_SYSTEM_PROMPT).
+_FILE_MARKER_RE = re.compile(r"\[FILE:\s*(.+?)\]")
+
+
+def extract_file_markers(text: str) -> tuple[list[str], str]:
+    """Split attachment markers out of the answer text.
+
+    Returns (paths, clean_text): every "[FILE: <path>]" is captured (trimmed) and
+    its marker line removed from the text that is shown to the user. A path may be
+    a relative one (resolved against the working dir by the caller).
+    """
+    if not text:
+        return [], text or ""
+    paths: list[str] = []
+    clean_lines: list[str] = []
+    for line in text.splitlines():
+        found = list(_FILE_MARKER_RE.findall(line))
+        if found:
+            paths.extend(p.strip() for p in found)
+            # Drop the marker portion but keep any surrounding text of the line.
+            rest = _FILE_MARKER_RE.sub("", line).strip()
+            if rest:
+                clean_lines.append(rest)
+        else:
+            clean_lines.append(line)
+    return paths, "\n".join(clean_lines).strip()
+
 
 def format_command_hint() -> str:
     mode = (config.DELETE_MODE or "trash").lower()

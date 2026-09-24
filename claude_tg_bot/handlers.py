@@ -6,6 +6,7 @@ The central "orchestrator" tying together project work (commands), attachments
 
 import asyncio
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -29,7 +30,8 @@ from .media import (
     _sniff_image_ext,
     _textual_media_prompt,
 )
-from .reply import _reply, _send_split, _send_with_retry
+from .reply import _reply, _send_attachment, _send_split, _send_with_retry
+from .runner import extract_file_markers
 from .sandbox import _is_sandbox_message, _strip_sandbox_prefix
 from .status import _is_model_unavailable, _is_run_error, _report_run_error
 
@@ -339,7 +341,10 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
             # so the user sees the reason.
             if _is_run_error(result):
                 _report_run_error(result.text or i18n.t("handlers.run_error", code=result.exit_code))
-            text = result.text
+            # Pull out the attachment markers ("[FILE: path]") Claude prints for
+            # files to send back. Those are resolved against the working dir and
+            # sent as attachments after the text; the marker lines are hidden.
+            attach_paths, text = extract_file_markers(result.text)
             if not text:
                 # On /clear Claude resets the context and answers with emptiness —
                 # show a meaningful message instead of "empty reply".
@@ -353,6 +358,7 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
             # The reply first, then remove "working": if deleting the indicator
             # hangs (MTProto-proxy failure) the reply still reaches.
             await _send_split(message, text)
+            await _send_result_attachments(client, message, attach_paths, project)
             await _cleanup_busy()
         except FileNotFoundError as e:
             await _cleanup_busy()
@@ -383,6 +389,57 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
                     media_dir.rmdir()
             except Exception:
                 pass
+
+
+def _resolve_attachment_path(project: Path, raw: str):
+    """Resolve a marker path against the working dir, never escaping it.
+
+    The marker may be relative ("img.png", ".claude_tg_bot_media/img.png") —
+    resolved against `project`. Absolute paths or ones that climb out of the
+    working dir (via "..") are rejected (return None) so we can't be tricked
+    into sending an arbitrary file of the system.
+    """
+    raw = raw.strip()
+    if not raw:
+        return None
+    p = Path(raw)
+    if p.is_absolute():
+        return None
+    candidate = (project / p).resolve()
+    # Must stay inside the working directory.
+    if not str(candidate).startswith(str(project.resolve()) + os.sep):
+        return None
+    return candidate
+
+
+async def _send_result_attachments(client, message: Message, paths, project: Path):
+    """Send files marked by Claude as attachments, one-by-one, after the text.
+
+    For each raw path from the marker we resolve it safely, check existence and
+    send it with the right method. On a problem (missing/outside the dir/too big)
+    we inform the user but keep going with the rest. If a path is missing we note
+    it and continue.
+    """
+    for raw in paths:
+        path = _resolve_attachment_path(project, raw)
+        if not path:
+            await _send_with_retry(
+                message,
+                i18n.t("handlers.attachment_invalid_path", path=raw),
+            )
+            continue
+        if not path.is_file():
+            await _send_with_retry(
+                message,
+                i18n.t("handlers.attachment_missing", path=str(path)),
+            )
+            continue
+        err = await _send_attachment(client, message, path)
+        if err:
+            await _send_with_retry(
+                message,
+                i18n.t("handlers.attachment_error", path=str(path), e=err),
+            )
 
 
 async def _handle_attachment(

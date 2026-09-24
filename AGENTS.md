@@ -247,6 +247,20 @@ ALLOWED_CHAT_IDS="123456789,-1234567890"
   selected via `/switch <name>` / `/new <name>` in Telegram.
 - `WORKSPACE_DIR` in `config.env` is **not used** in the code — don't waste time on it.
 
+### Attachments in replies (marker prompt)
+
+- `ATTACHMENT_SYSTEM_PROMPT` (config) is a **technical instruction for the model**,
+  NOT a user-facing string. It is added as a second `--append-system-prompt`
+  right after `CLAUDE_SYSTEM_PROMPT` in `runner._build_command`, and does **not**
+  live in `locale/` (no `en`/`ru` keys) — it stays one English default.
+- Claude marks a file to send back with a `[FILE: <path>]` line; the bot parses it
+  in `runner.extract_file_markers`, sends the file via `reply._send_attachment`
+  (photo/video/audio/document by extension) and hides the marker line from the text.
+- Result files go into the working dir's `.claude_tg_bot_media` subfolder (the
+  same folder as downloaded attachments), so `/clearmedia` cleans them. Paths from
+  the marker are resolved against the working dir and must NOT escape it
+  (`handlers._resolve_attachment_path`).
+
 ## Language of user-facing strings (bilingual)
 
 User-facing strings (bot replies, console output) are **not** hardcoded in
