@@ -209,12 +209,18 @@ AUTO_DELETE_MEDIA: bool = _env_bool("AUTO_DELETE_MEDIA", False)
 #   permanent  — delete forever (no way to restore).
 DELETE_MODE: str = (os.getenv("DELETE_MODE", "trash").strip().lower() or "trash")
 
-# KEEP_AWAKE — keep the laptop awake while the bot runs (caffeinate -dimsu).
+# KEEP_AWAKE — keep the laptop awake while the bot runs.
 #   true  — keep the system awake (otherwise the network drops on sleep and the
 #           bot stops receiving/answering messages).
 #   false — change nothing. Default off (the user decides).
 #   In claude-tg-bot.sh it's read as a config.env environment variable.
 KEEP_AWAKE: bool = _env_bool("KEEP_AWAKE", False)
+
+# KEEP_AWAKE_COMMAND — the command run to keep the system awake (command + args,
+# space-separated). Used by claude-tg-bot.sh when KEEP_AWAKE is true; default
+# "caffeinate -dimsu". Only the flag value is documented here — the actual
+# command is read from config.env by the launch script.
+KEEP_AWAKE_COMMAND: str = os.getenv("KEEP_AWAKE_COMMAND", "caffeinate -dimsu").strip()
 
 
 # ---------------------------------------------------------------------------

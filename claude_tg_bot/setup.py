@@ -67,6 +67,7 @@ GROUPS = [
         ("AUTO_DELETE_MEDIA", False, "false", "Auto-delete an attachment after sending to claude (true/false)"),
         ("DELETE_MODE", False, "trash", "Where to delete an attachment (trash/permanent)"),
         ("KEEP_AWAKE", False, "false", "Keep the laptop awake while the bot runs (true/false). Prevents sleep dropping the network and making the bot stop answering"),
+        ("KEEP_AWAKE_COMMAND", False, "caffeinate -dimsu", "Command + args to keep the system awake when KEEP_AWAKE is true. Empty or not on PATH — the bot runs without it"),
     ]),
 ]
 
@@ -226,6 +227,17 @@ def main() -> None:
                 while values[key] and _reserved_collision(values[key]):
                     print(i18n.t("setup.invalid_sandbox_command"))
                     values[key] = _ask(key, hint, current, default, required)
+
+    # KEEP_AWAKE=true requires a non-empty KEEP_AWAKE_COMMAND, otherwise the bot
+    # can't keep the system awake and refuses to start — so re-prompt it.
+    if values.get("KEEP_AWAKE", "").strip().lower() in ("true", "1", "yes"):
+        ka = next((s for g in GROUPS for s in g[1] if s[0] == "KEEP_AWAKE_COMMAND"), None)
+        if ka:
+            _kk, _kreq, kdefault, khint = ka
+            while not values.get("KEEP_AWAKE_COMMAND", "").strip():
+                print(i18n.t("setup.need_keep_awake_command"))
+                values["KEEP_AWAKE_COMMAND"] = _ask(
+                    _kk, khint, existing.get(_kk, ""), kdefault, False)
 
     values.update(DEFAULTS)
 
