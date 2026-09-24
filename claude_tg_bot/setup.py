@@ -31,7 +31,7 @@ BOT_LANG_CHOICES = i18n.available_langs()
 # the current value if it's among them, else the default).
 DEFAULT_CHOICES = {
     "KEEP_AWAKE": ["true", "false"],
-    "AUTO_DELETE_MEDIA": ["true", "false"],
+    "AUTO_DELETE_ATTACH": ["true", "false"],
     "DELETE_MODE": ["trash", "permanent"],
     "CLAUDE_PERMISSION_MODE": ["bypassPermissions", "acceptEdits", "plan", "default"],
 }
@@ -64,7 +64,7 @@ GROUPS = [
         ("PROJECTS_ROOT", True, "", "Root of projects the bot is allowed to work in"),
     ]),
     ("Behavior / cleanup", [
-        ("AUTO_DELETE_MEDIA", False, "false", "Auto-delete an attachment after sending to claude (true/false)"),
+        ("AUTO_DELETE_ATTACH", False, "false", "Auto-delete an attachment after sending to claude (true/false)"),
         ("DELETE_MODE", False, "trash", "Where to delete an attachment (trash/permanent)"),
         ("KEEP_AWAKE", False, "false", "Keep the laptop awake while the bot runs (true/false). Prevents sleep dropping the network and making the bot stop answering"),
         ("KEEP_AWAKE_COMMAND", False, "caffeinate -dimsu", "Command + args to keep the system awake when KEEP_AWAKE is true. Empty or not on PATH — the bot runs without it"),

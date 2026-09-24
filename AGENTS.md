@@ -88,7 +88,7 @@ not copy the MT_PROXY/secret value into chat, messages, or documentation.
 ## What may be committed
 
 - Source code: the whole `claude_tg_bot/` package (modules: `config`, `client`,
-  `handlers`, `commands`, `media`, `sandbox`, `status`, `reply`, `access`,
+  `handlers`, `commands`, `attach`, `sandbox`, `status`, `reply`, `access`,
   `process`, `retry`, `runner`, `sessions`, `setup`, `log`, `version`, `__main__`)
 - Scripts: `claude-tg-bot.sh` (launch), `setup.sh` (setup) — both use the shared
   bash module `lib/env.sh` (Python choice + venv + dependencies).
@@ -148,7 +148,7 @@ bumped `main` does not automatically get a tag/release on every merge.
 
 3. **Run unit tests**: use the interpreter from `.venv` (it has
    `pyrogram`/`kurigram`). The system `python3` lacks the dependencies — the
-   `test_tg_bot` / `test_media_cleanup` tests will fail with
+   `test_tg_bot` / `test_attach_cleanup` tests will fail with
    `ModuleNotFoundError: pyrogram`. Tests must pass; if they fail, fix them
    before the release:
    ```bash
@@ -256,8 +256,8 @@ ALLOWED_CHAT_IDS="123456789,-1234567890"
 - Claude marks a file to send back with a `[FILE: <path>]` line; the bot parses it
   in `runner.extract_file_markers`, sends the file via `reply._send_attachment`
   (photo/video/audio/document by extension) and hides the marker line from the text.
-- Result files go into the working dir's `.claude_tg_bot_media` subfolder (the
-  same folder as downloaded attachments), so `/clearmedia` cleans them. Paths from
+- Result files go into the working dir's `.claude_tg_bot_attach` subfolder (the
+  same folder as downloaded attachments), so `/clearattach` cleans them. Paths from
   the marker are resolved against the working dir and must NOT escape it
   (`handlers._resolve_attachment_path`).
 

@@ -163,7 +163,7 @@ COMMAND_ARGS_ALTERNATIVE: str = os.getenv("COMMAND_ARGS_ALTERNATIVE", "").strip(
 CLAUDE_SYSTEM_PROMPT: str = os.getenv("CLAUDE_SYSTEM_PROMPT", "").strip()
 
 # ATTACHMENT_SYSTEM_PROMPT — how to mark files Claude creates as attachments to
-# send back (save the result into .claude_tg_bot_media and print a "[FILE: path]"
+# send back (save the result into .claude_tg_bot_attach and print a "[FILE: path]"
 # marker line). Added to the Claude call right after CLAUDE_SYSTEM_PROMPT as a
 # second --append-system-prompt (both reach the model). An empty/absent value
 # falls back to the built-in instruction below (attachments stay on); set the
@@ -173,16 +173,16 @@ ATTACHMENT_SYSTEM_PROMPT: str = (
     or "Attachments rule. When you finish and a result file should be sent back "
        "to the user as an attachment (an image, video, audio or any other file, "
        "not just code), you MUST:\n"
-       "1. Save that file into the '.claude_tg_bot_media' subfolder of the current "
+       "1. Save that file into the '.claude_tg_bot_attach' subfolder of the current "
        "working directory. Never save it to /tmp, the home directory or anywhere "
        "else outside this folder.\n"
        "2. In your FINAL answer, print the path to it as a marker line, one per "
        "file, exactly on its own line:\n"
-       "[FILE: <relative-path-inside-.claude_tg_bot_media>]\n"
+       "[FILE: <relative-path-inside-.claude_tg_bot_attach>]\n"
        "Use the path relative to the current working directory (e.g. "
-       "'.claude_tg_bot_media/frame.png'). Do NOT use an absolute /tmp path. "
+       "'.claude_tg_bot_attach/frame.png'). Do NOT use an absolute /tmp path. "
        "Print one such line for each file you want to send. Only files saved in "
-       "'.claude_tg_bot_media' are sent; anything you save elsewhere is not. "
+       "'.claude_tg_bot_attach' are sent; anything you save elsewhere is not. "
        "If you created no file to send, print nothing."
 )
 
@@ -222,13 +222,13 @@ MESSAGE_RETRY_DELAY: float = float(os.getenv("MESSAGE_RETRY_DELAY", "2.0"))
 # ---------------------------------------------------------------------------
 # Downloaded attachment management (photo/video/audio/file)
 # ---------------------------------------------------------------------------
-# AUTO_DELETE_MEDIA — auto-delete an attachment after sending it to claude.
+# AUTO_DELETE_ATTACH — auto-delete an attachment after sending it to claude.
 #   true  — delete (per DELETE_MODE) after processing.
-#   false — do NOT delete automatically; clean only manually via /clearmedia.
+#   false — do NOT delete automatically; clean only manually via /clearattach.
 #   Default false (safer — nothing is lost without an explicit command).
-AUTO_DELETE_MEDIA: bool = _env_bool("AUTO_DELETE_MEDIA", False)
+AUTO_DELETE_ATTACH: bool = _env_bool("AUTO_DELETE_ATTACH", False)
 
-# DELETE_MODE — where to delete an attachment (for /clearmedia and auto-delete):
+# DELETE_MODE — where to delete an attachment (for /clearattach and auto-delete):
 #   trash      — to the macOS Trash (restorable). Default value.
 #   permanent  — delete forever (no way to restore).
 DELETE_MODE: str = (os.getenv("DELETE_MODE", "trash").strip().lower() or "trash")

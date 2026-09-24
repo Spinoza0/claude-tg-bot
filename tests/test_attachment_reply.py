@@ -21,15 +21,15 @@ class TestExtractFileMarkers(unittest.TestCase):
 
     def test_multiple_markers(self):
         paths, text = extract_file_markers(
-            "[FILE: a.png]\ntext\n[FILE: .claude_tg_bot_media/b.mp4]"
+            "[FILE: a.png]\ntext\n[FILE: .claude_tg_bot_attach/b.mp4]"
         )
-        self.assertEqual(paths, ["a.png", ".claude_tg_bot_media/b.mp4"])
+        self.assertEqual(paths, ["a.png", ".claude_tg_bot_attach/b.mp4"])
         self.assertNotIn("[FILE:", text)
         self.assertIn("text", text)
 
     def test_marker_with_spaces_and_path(self):
-        paths, text = extract_file_markers("result: [FILE: .claude_tg_bot_media/out.png]")
-        self.assertEqual(paths, [".claude_tg_bot_media/out.png"])
+        paths, text = extract_file_markers("result: [FILE: .claude_tg_bot_attach/out.png]")
+        self.assertEqual(paths, [".claude_tg_bot_attach/out.png"])
         self.assertEqual(text, "result:")
 
     def test_empty_text(self):
@@ -115,12 +115,12 @@ class TestResolveAttachmentPath(unittest.TestCase):
                 (project / "img.png").resolve(),
             )
 
-    def test_media_subfolder(self):
+    def test_attach_subfolder(self):
         with TemporaryDirectory() as d:
             project = Path(d)
             self.assertEqual(
-                _resolve_attachment_path(project, ".claude_tg_bot_media/a.png"),
-                (project / ".claude_tg_bot_media" / "a.png").resolve(),
+                _resolve_attachment_path(project, ".claude_tg_bot_attach/a.png"),
+                (project / ".claude_tg_bot_attach" / "a.png").resolve(),
             )
 
     def test_absolute_rejected(self):

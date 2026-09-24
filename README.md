@@ -20,7 +20,7 @@ flags are passed via `COMMAND_ARGS`.
 Telegram account  (userbot)
      │  MTProto client [via MT_PROXY, if set]
      ▼
- claude_tg_bot/  — package: handlers (handlers), commands (commands), media (media),
+ claude_tg_bot/  — package: handlers (handlers), commands (commands), attach (attach),
                     status (status), Claude launcher (runner), sessions (sessions)
      ▼
  runner.py — subprocess: <CLAUDE_COMMAND> -p "..." --output-format stream-json
@@ -39,11 +39,11 @@ Telegram account  (userbot)
   from ordinary messages in the chat.
 - **Attachments in replies** — Claude works in `-p` (print) mode and writes its
   result files to the working directory. Through `ATTACHMENT_SYSTEM_PROMPT` we ask
-  it to save an image/video/audio/document it created into `.claude_tg_bot_media`
+  it to save an image/video/audio/document it created into `.claude_tg_bot_attach`
   and mark it with a `[FILE: <path>]` line. The bot parses those markers, hides
   them from the visible text and sends the files back (photo/video/audio/document
   by extension). The files land in the same folder as downloaded attachments, so
-  `/clearmedia` cleans them too.
+  `/clearattach` cleans them too.
 
 ## Install and setup
 
@@ -115,7 +115,7 @@ Optional:
 - `ATTACHMENT_SYSTEM_PROMPT` — the attachment-marker instruction, added as a
   second `--append-system-prompt` right after `CLAUDE_SYSTEM_PROMPT`. It tells
   Claude to save an image/video/audio/document it created into the work dir's
-  `.claude_tg_bot_media` and mark it with a `[FILE: <path>]` line. Empty — the
+  `.claude_tg_bot_attach` and mark it with a `[FILE: <path>]` line. Empty — the
   built-in default is used (attachments are sent back). Set a custom text to
   change how Claude marks files (or to turn the built-in off).
 - `SANDBOX_COMMAND` — the trigger string for launching the sandbox "in any chat":
@@ -125,11 +125,11 @@ Optional:
 - `SANDBOX_ROOT` — the directory (sandbox) where sandboxing runs for
   `SANDBOX_COMMAND` messages. If unset — the `~/.claude-tg-bot/sandbox` sandbox
   is used.
-- `AUTO_DELETE_MEDIA` — whether to auto-delete an attachment after sending it to
+- `AUTO_DELETE_ATTACH` — whether to auto-delete an attachment after sending it to
   Claude. `true` — delete, `false` (default) — don't delete, clean only manually:
-  via `/clearmedia`, or automatically on `/clear` (see below).
+  via `/clearattach`, or automatically on `/clear` (see below).
 - `DELETE_MODE` — where to delete: `trash` (macOS Trash, default) or
-  `permanent` (forever). Works both for `/clearmedia` (incl. when auto-called
+  `permanent` (forever). Works both for `/clearattach` (incl. when auto-called
   from `/clear`) and for auto-deletion.
 - `RETRY_LIMIT` — how many retries (including the first attempt) are made on a
   Telegram connection failure, message send, or Claude call before giving up.
@@ -219,9 +219,9 @@ without changes.
 | `/new <name>` | Create and activate a project |
 | `/status` | Current project / path / session / active-task counter |
 | `/kill` | Kill stuck Claude processes launched by this bot |
-| `/clear` | First **automatically** calls `/clearmedia` (attachment cleanup), then resets the Claude context (start a new session) |
-| `/clearmedia` | Delete the current project's downloaded attachments (per `DELETE_MODE`) |
-| `/mediasize` | Show the count and size of the current project's downloaded attachments |
+| `/clear` | First **automatically** calls `/clearattach` (attachment cleanup), then resets the Claude context (start a new session) |
+| `/clearattach` | Delete the current project's downloaded attachments (per `DELETE_MODE`) |
+| `/attachsize` | Show the count and size of the current project's downloaded attachments |
 | `@helpbot <command/text>` | Work in `SANDBOX_ROOT` in any chat (see below) |
 
 A plain message in the chat → launches Claude in the active project.
@@ -243,7 +243,7 @@ from any chat. `@helpbot` projects are stored separately from the regular ones
 (`PROJECTS_ROOT`), and both can run in parallel without overlapping context.
 
 Everything else works the same as described above — the same commands
-(`/status`, `/list`, `/new foo`, `/switch foo`, `/clearmedia`, `/mediasize`) and
+(`/status`, `/list`, `/new foo`, `/switch foo`, `/clearattach`, `/attachsize`) and
 attachment handling, just applied to the sandbox root and its project choice.
 
 ## Limitations
