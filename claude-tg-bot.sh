@@ -83,19 +83,33 @@ fi
 # --- 4. Run the bot ---------------------------------------------------------
 # The bot checks single-instance on its own (scans running processes): if one is
 # already running — it prints it and won't start a second time.
-# KEEP_AWAKE (from config.env): if true — keep the laptop awake
-# (caffeinate -dimsu) so sleep doesn't drop the network and the bot keeps
-# receiving/answering messages. Default false.
-# If caffeinate is unavailable (not macOS) — without it.
+# KEEP_AWAKE (from config.env): if true — keep the laptop awake so sleep doesn't
+# drop the network and the bot keeps receiving/answering messages. Default false.
+# KEEP_AWAKE_COMMAND — the command run to keep the system awake (command + args,
+# space-separated), set in config.env. REQUIRED when KEEP_AWAKE is true (checked
+# below); if its first word is not on PATH (e.g. not macOS) — the bot runs without it.
 KEEP_AWAKE="false"
+KEEP_AWAKE_COMMAND=""
 if [ -f "$CONFIG_ENV" ]; then
     KEEP_AWAKE="$(grep -E '^KEEP_AWAKE=' "$CONFIG_ENV" | tail -1 | cut -d= -f2- | tr -d '"' | tr '[:upper:]' '[:lower:]' || true)"
+    KEEP_AWAKE_COMMAND="$(grep -E '^KEEP_AWAKE_COMMAND=' "$CONFIG_ENV" | tail -1 | cut -d= -f2- | tr -d '"' || true)"
+fi
+# If KEEP_AWAKE is enabled, a non-empty KEEP_AWAKE_COMMAND is required — without
+# it we can't keep the system awake, so we refuse to start rather than mislead.
+if { [ "$KEEP_AWAKE" = "true" ] || [ "$KEEP_AWAKE" = "1" ] || [ "$KEEP_AWAKE" = "yes" ]; } \
+        && [ -z "${KEEP_AWAKE_COMMAND// /}" ]; then
+    echo "$(lib_msg run.sh.keep_awake_empty)" 1>&2
+    exit 1
 fi
 echo "$(lib_msg run.sh.launching)"
 # "$@" below — pass through the call arguments (e.g. --log=info) into python -m.
 # We run via $VENV/bin/python (we didn't activate the venv in setup_env).
-if { [ "$KEEP_AWAKE" = "true" ] || [ "$KEEP_AWAKE" = "1" ] || [ "$KEEP_AWAKE" = "yes" ]; } && command -v caffeinate >/dev/null 2>&1; then
-    exec caffeinate -dimsu "$VENV/bin/python" -m claude_tg_bot "$@"
+# The keep-awake command is word-split so "caffeinate -dimsu" becomes argv.
+_AWAKE_BIN="${KEEP_AWAKE_COMMAND%% *}"
+if { [ "$KEEP_AWAKE" = "true" ] || [ "$KEEP_AWAKE" = "1" ] || [ "$KEEP_AWAKE" = "yes" ]; } \
+        && [ -n "$_AWAKE_BIN" ] && command -v "$_AWAKE_BIN" >/dev/null 2>&1; then
+    # shellcheck disable=SC2086  # deliberate word-split of KEEP_AWAKE_COMMAND
+    exec $KEEP_AWAKE_COMMAND "$VENV/bin/python" -m claude_tg_bot "$@"
 else
     exec "$VENV/bin/python" -m claude_tg_bot "$@"
 fi

@@ -139,6 +139,8 @@
   "run.sh.chat_ids_empty": "ℹ️  ALLOWED_CHAT_IDS is empty — the bot will only answer in Saved Messages.",
   "run.sh.chat_ids_empty_hint": "   (it will not answer in groups). To use another chat, write its id in config.env.",
   "run.sh.launching": "==> Launching bot...",
+  "run.sh.keep_awake_empty": "KEEP_AWAKE is enabled but KEEP_AWAKE_COMMAND is empty — set it in config.env (or disable KEEP_AWAKE).",
+  "setup.need_keep_awake_command": "KEEP_AWAKE is on — a non-empty KEEP_AWAKE_COMMAND is required.",
 
   "setup.sh.launching": "==> Running setup (claude_tg_bot/setup.py)...",
 
