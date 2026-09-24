@@ -68,33 +68,42 @@ class TestSendAttachment(unittest.TestCase):
         msg.chat.id = 123
         return msg
 
+    def _run(self, coro):
+        import asyncio
+        return asyncio.run(coro)
+
     def test_photo_method(self):
         client = mock.AsyncMock()
         path = Path("/tmp/a.png")
-        import asyncio
-        asyncio.run(_send_attachment(client, self._message(), path))
+        self.assertIsNone(self._run(_send_attachment(client, self._message(), path)))
         client.send_photo.assert_awaited_once_with(123, str(path))
 
     def test_video_method(self):
         client = mock.AsyncMock()
         path = Path("/tmp/a.mp4")
-        import asyncio
-        asyncio.run(_send_attachment(client, self._message(), path))
+        self.assertIsNone(self._run(_send_attachment(client, self._message(), path)))
         client.send_video.assert_awaited_once_with(123, str(path))
 
     def test_audio_method(self):
         client = mock.AsyncMock()
         path = Path("/tmp/a.mp3")
-        import asyncio
-        asyncio.run(_send_attachment(client, self._message(), path))
+        self.assertIsNone(self._run(_send_attachment(client, self._message(), path)))
         client.send_audio.assert_awaited_once_with(123, str(path))
 
     def test_document_method(self):
         client = mock.AsyncMock()
         path = Path("/tmp/a.pdf")
-        import asyncio
-        asyncio.run(_send_attachment(client, self._message(), path))
+        self.assertIsNone(self._run(_send_attachment(client, self._message(), path)))
         client.send_document.assert_awaited_once_with(123, str(path))
+
+    def test_failure_returns_error_string(self):
+        # When every retry fails _run_with_retry returns None -> an error string.
+        client = mock.AsyncMock()
+        path = Path("/tmp/a.png")
+        with mock.patch("claude_tg_bot.reply._run_with_retry", new=mock.AsyncMock(return_value=None)):
+            err = self._run(_send_attachment(client, self._message(), path))
+        self.assertIsInstance(err, str)
+        self.assertTrue(err)
 
 
 class TestResolveAttachmentPath(unittest.TestCase):
