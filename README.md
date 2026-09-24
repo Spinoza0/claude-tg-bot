@@ -37,6 +37,13 @@ Telegram account  (userbot)
   `🤖` and a space, then the text itself (`🤖 ...`). This visually separates any
   bot reply (Claude result, `/status`, `/help`, the "Thinking..." indicator)
   from ordinary messages in the chat.
+- **Attachments in replies** — Claude works in `-p` (print) mode and writes its
+  result files to the working directory. Through `ATTACHMENT_SYSTEM_PROMPT` we ask
+  it to save an image/video/audio/document it created into `.claude_tg_bot_media`
+  and mark it with a `[FILE: <path>]` line. The bot parses those markers, hides
+  them from the visible text and sends the files back (photo/video/audio/document
+  by extension). The files land in the same folder as downloaded attachments, so
+  `/clearmedia` cleans them too.
 
 ## Install and setup
 
@@ -105,6 +112,12 @@ Optional:
 - `CLAUDE_SYSTEM_PROMPT` — the system prompt for Claude, passed via
   `--append-system-prompt`. If set — it's appended to every Claude call; if
   empty — the flag is not passed and Claude uses its own standard system prompt.
+- `ATTACHMENT_SYSTEM_PROMPT` — the attachment-marker instruction, added as a
+  second `--append-system-prompt` right after `CLAUDE_SYSTEM_PROMPT`. It tells
+  Claude to save an image/video/audio/document it created into the work dir's
+  `.claude_tg_bot_media` and mark it with a `[FILE: <path>]` line. Empty — the
+  built-in default is used (attachments are sent back). Set a custom text to
+  change how Claude marks files (or to turn the built-in off).
 - `SANDBOX_COMMAND` — the trigger string for launching the sandbox "in any chat":
   a message must start with it, then a space and a command/text (see below). If
   unset or empty — `@helpbot` is used (the bot mention). The value is shown in

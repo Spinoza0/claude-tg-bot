@@ -1,5 +1,7 @@
 """Sending bot messages: unified format + retries on transient Telegram errors."""
 
+from pathlib import Path
+
 from pyrogram.types import Message
 
 from . import config
@@ -62,3 +64,51 @@ async def _send_with_retry(message: Message, text: str, attempts: int | None = N
         multiplier=1.0,
         max_delay=config.MESSAGE_RETRY_DELAY,
     )
+
+
+# Extension → send method in Telegram. The 'document' fallback covers everything
+# else (PDF, archives, spreadsheets, ...).
+_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+_VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".avi"}
+_AUDIO_EXT = {".mp3", ".ogg", ".opus", ".m4a", ".wav", ".flac"}
+
+
+def _attachment_kind(path: str) -> str:
+    """The send kind for a file by extension: 'photo', 'video', 'audio', 'document'."""
+    ext = Path(path).suffix.lower()
+    if ext in _IMAGE_EXT:
+        return "photo"
+    if ext in _VIDEO_EXT:
+        return "video"
+    if ext in _AUDIO_EXT:
+        return "audio"
+    return "document"
+
+
+async def _send_attachment(client, message: Message, path):
+    """Send a result file back to Telegram, choosing the method by extension.
+
+    Uses the same retry mechanism as text (transient Telegram errors). Returns
+    None on success; on an unrecoverable error returns an error string (so the
+    caller can inform the user without breaking the rest of the handling).
+    """
+    kind = _attachment_kind(str(path))
+    return await _run_with_retry(
+        lambda: _send_attachment_once(client, message, path, kind),
+        limit=config.MESSAGE_RETRY_LIMIT,
+        base_delay=config.MESSAGE_RETRY_DELAY,
+        multiplier=1.0,
+        max_delay=config.MESSAGE_RETRY_DELAY,
+    )
+
+
+async def _send_attachment_once(client, message: Message, path, kind: str):
+    """The actual Pyrogram send for one attachment. Raises on error (retried)."""
+    chat_id = message.chat.id
+    if kind == "photo":
+        return await client.send_photo(chat_id, str(path))
+    if kind == "video":
+        return await client.send_video(chat_id, str(path))
+    if kind == "audio":
+        return await client.send_audio(chat_id, str(path))
+    return await client.send_document(chat_id, str(path))
