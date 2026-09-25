@@ -169,27 +169,27 @@ async def _handle_config(message, parts: list[str]):
     changes, reports = [], []
     for key, value in pairs.items():
         if not config.is_config_key_editable(key):
-            reports.append(i18n.t("cmd.config_unknown", key=key,
+            reports.append(i18n.t("cmd.config_unknown", setting=key,
                                   allowed=", ".join(sorted(config.EDITABLE_CONFIG_KEYS))))
             continue
         if key == "BOT_LANG":
             code = value.strip().lower()
             available = i18n.available_langs()
             if code not in available:
-                reports.append(i18n.t("cmd.config_invalid", key=key, value=value,
+                reports.append(i18n.t("cmd.config_invalid", setting=key, value=value,
                                       allowed=", ".join(available)))
                 continue
             config.set_config_value("BOT_LANG", code)
             i18n.set_lang(code)
-            changes.append(i18n.t("cmd.config_changed", key=key, value=code))
+            changes.append(i18n.t("cmd.config_changed", setting=key, value=code))
         elif key == "AGENT_GENDER":
             code = value.strip().lower()
             if code not in {"male", "female"}:
-                reports.append(i18n.t("cmd.config_invalid", key=key, value=value,
+                reports.append(i18n.t("cmd.config_invalid", setting=key, value=value,
                                       allowed="male, female"))
                 continue
             config.set_config_value("AGENT_GENDER", code)
-            changes.append(i18n.t("cmd.config_changed", key=key, value=code))
+            changes.append(i18n.t("cmd.config_changed", setting=key, value=code))
         elif key == "SANDBOX_COMMAND":
             code = value.strip()
             if not code or code.startswith("/") or code.lower().lstrip("/") in RESERVED_COMMANDS:
@@ -198,7 +198,7 @@ async def _handle_config(message, parts: list[str]):
             config.set_config_value("SANDBOX_COMMAND", code)
             # The sandbox trigger is read at import time; refresh it live.
             sandbox.SANDBOX_PREFIX = config.SANDBOX_COMMAND
-            changes.append(i18n.t("cmd.config_changed", key=key, value=code))
+            changes.append(i18n.t("cmd.config_changed", setting=key, value=code))
 
     if changes:
         full = i18n.t("cmd.config_done") + "\n" + "\n".join(changes)
