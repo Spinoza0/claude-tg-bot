@@ -269,6 +269,22 @@ ALLOWED_CHAT_IDS="123456789,-1234567890"
   the marker are resolved against the working dir and must NOT escape it
   (`handlers._resolve_attachment_path`).
 
+### Reply quote context (replies to messages)
+
+- When the user **replies** to a message, `_run_and_reply` walks the quote chain
+  (`reply_context.collect_reply_context`), prepends a `[Reply context]` block
+  (author + type + quoted text/caption) to the prompt, and downloads the quoted
+  attachments into the working dir's `.claude_tg_bot_attach` (merged into
+  `image_paths`), so Claude sees both the question and what it refers to.
+- **Anti-loop**: only the bot's own `outgoing + reply` messages are ignored
+  (`on_all_message`). A human reply to a bot message IS processed and includes
+  that bot message as context (a normal follow-up, no loop).
+- **Depth**: `reply_context.MAX_QUOTE_DEPTH` (hard-coded) bounds the quote chain;
+  `QUOTE_TEXT_MAX_LEN` truncates long quoted text. Both are code constants (no
+  config value) — a guard, not a setting.
+- The quote block is data for Claude; the `reply.context_header` key is
+  localized, the type names come from `attach._attach_type_name`.
+
 ## Language of user-facing strings (bilingual)
 
 User-facing strings (bot replies, console output) are **not** hardcoded in

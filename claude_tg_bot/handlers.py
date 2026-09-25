@@ -34,6 +34,7 @@ from .reply import _reply, _send_attachment, _send_split, _send_with_retry
 from .runner import extract_file_markers
 from .sandbox import _is_sandbox_message, _strip_sandbox_prefix
 from .status import _is_model_unavailable, _is_run_error, _report_run_error
+from .reply_context import collect_reply_context
 
 
 async def on_sandbox(client, message: Message):
@@ -242,6 +243,19 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
     result.session_id.
     """
     project = Path(cwd) if cwd else Path(st.project_root)
+    # If the user replied to a message — feed the quoted content (text + the
+    # quoted attachments) to Claude along with the user's own text. The reply
+    # context is prepended to the prompt; the quoted files are downloaded into
+    # the project's .claude_tg_bot_attach and merged into image_paths. The
+    # anti-loop filter (top-level outgoing+reply) is in on_all_message, so we
+    # don't process the bot's own replies. A human reply to a bot message is a
+    # valid follow-up and includes that bot message as context.
+    if getattr(message, "reply_to_message", None) is not None:
+        rctx = await collect_reply_context(message, project)
+        if rctx.text_block:
+            prompt = rctx.text_block + "\n" + prompt
+        if rctx.image_paths:
+            image_paths = list(rctx.image_paths) + list(image_paths or [])
     if not resume_session_id:
         resume_session_id = find_latest_session(project)
     # Send a working indicator and remember its id (chat_id + message_id).

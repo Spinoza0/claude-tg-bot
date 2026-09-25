@@ -9,6 +9,9 @@ env/
 # Local Claude Code settings (not for git)
 .claude/
 
+# Working plans (not for git)
+.agents/plans/
+
 # Caches and bytecode
 __pycache__/
 *.py[cod]
