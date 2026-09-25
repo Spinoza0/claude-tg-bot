@@ -47,22 +47,26 @@ Telegram account  (userbot)
 
 ## Install and setup
 
-Nothing needs to be installed manually — ready-made scripts do it all, setting
-up Python and installing dependencies if needed:
+Install via [Homebrew](https://brew.sh) from the tap:
 
 ```bash
-cd claude-tg-bot
-
-bash setup.sh          # setup: prompt for parameters and create config.env
-bash claude-tg-bot.sh  # launch the bot (creates venv and installs dependencies itself)
+brew install Spinoza0/tap/claude-tg-bot
 ```
 
-`setup.sh` — interactive setup: it asks parameters by groups (mandatory and
+Then run the interactive setup (asks parameters by groups, creates
+`~/.claude-tg-bot/config.env`) and launch the bot:
+
+```bash
+claude-tg-bot-setup   # setup: prompt for parameters and create config.env
+claude-tg-bot         # launch the bot (creates venv and installs dependencies itself)
+```
+
+`claude-tg-bot-setup` — interactive setup: it asks parameters by groups (mandatory and
 optional) and creates `~/.claude-tg-bot/config.env`. If the file already exists
 it edits it (makes a `config.env.bak` copy and shows the current values;
 Enter — keep, a new value — replace).
 
-`claude-tg-bot.sh` — launch: it creates the virtual environment (`venv`),
+`claude-tg-bot` — launch: it creates the virtual environment (`venv`),
 installs the dependencies from `requirements.txt` and runs the bot. Both scripts
 pick a suitable Python (≥3.10) and prepare the environment automatically via the
 shared module `lib/env.sh` — nothing needs to be run manually.
@@ -72,11 +76,11 @@ shared module `lib/env.sh` — nothing needs to be run manually.
 `config.env` is looked up in **two places** (by priority):
 
 1. `~/.claude-tg-bot/config.env` — the directory that holds the `sandbox` folder;
-2. `<claude-tg-bot.sh directory>/config.env` — next to the launch script.
+2. `<claude-tg-bot directory>/config.env` — next to the launch command.
 
 **The file is mandatory.** If it's absent in both places the bot exits at startup
 (crashes with a message saying where to put `config.env`), and
-`claude-tg-bot.sh` reports this and exits. Without the secrets
+`claude-tg-bot` reports this and exits. Without the secrets
 (`API_ID`/`API_HASH`/`PHONE`) the bot won't start either — `validate()` reports
 it.
 
@@ -176,21 +180,22 @@ ALLOWED_CHAT_IDS="-1001234567890,-1009876543210"   # several — in one pair of 
 ## Launch
 
 ```bash
-bash claude-tg-bot.sh    # from the project directory
+claude-tg-bot    # launch the bot (from PATH, after brew install — no path needed)
 ```
 
-The script creates `.venv`, installs the dependencies (if absent), checks
+The command creates `.venv`, installs the dependencies (if absent), checks
 `config.env` and runs the bot. No manual Python launch needed. If `KEEP_AWAKE=true`
-is set in `config.env`, the script keeps the laptop awake (`caffeinate -dimsu`)
-so sleep doesn't drop the network and the bot keeps receiving/answering messages.
+is set in `config.env`, it keeps the machine awake using `KEEP_AWAKE_COMMAND` (a
+custom keep-awake command, e.g. `caffeinate -dimsu`), so sleep doesn't drop the
+network and the bot keeps receiving/answering messages.
 
 **Logging** is enabled by the `--log[=level]` flag at launch (default off;
 without a value — only errors):
 
 ```bash
-bash claude-tg-bot.sh --log          # only ERROR
-bash claude-tg-bot.sh --log=info     # INFO + errors (launch, commands, session id)
-bash claude-tg-bot.sh --log=debug    # everything, incl. debug
+claude-tg-bot --log          # only ERROR
+claude-tg-bot --log=info     # INFO + errors (launch, commands, session id)
+claude-tg-bot --log=debug    # everything, incl. debug
 ```
 
 Logs are written to `~/.claude-tg-bot/logs/claude-tg-bot-<date>.log`. On an

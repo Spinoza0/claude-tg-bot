@@ -1,7 +1,7 @@
 # ================================================================
 # lib/env.sh — shared environment setup for the project's bash scripts.
 #
-# Sourced via `source lib/env.sh` from claude-tg-bot.sh and setup.sh.
+# Sourced via `source lib/env.sh` from claude-tg-bot and claude-tg-bot-setup.
 # Sets PROJECT_DIR (repo root), VENV, and the setup_env() function, which
 # picks a suitable Python (>=3.10), creates a venv and installs the
 # dependencies from requirements.txt (if missing).
@@ -10,7 +10,7 @@
 # so as not to change the caller's behavior.
 # ================================================================
 
-# The project root — the directory holding lib/ and claude-tg-bot.sh.
+# The project root — the directory holding lib/ and claude-tg-bot.
 PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 VENV="$PROJECT_DIR/.venv"
 
@@ -102,7 +102,6 @@ setup_env() {
         echo "$(lib_msg env.sh.no_python_hint) $0"
         exit 1
     fi
-    echo "$(lib_msg env.sh.python)" | sed "s|{py}|$PYTHON|; s|{ver}|$("$PYTHON" -c 'import sys; print(".".join(map(str,sys.version_info[:3])))')|"
 
     # Recreate the venv if it was built with an older Python.
     if [ -d "$VENV" ] && ! venv_ok; then

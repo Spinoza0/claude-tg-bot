@@ -1,6 +1,6 @@
 #!/bin/bash
 # ================================================================
-# claude-tg-bot.sh — run the Telegram bot with a single command.
+# claude-tg-bot — run the Telegram bot with a single command.
 #
 # What it does:
 #   1. Creates and activates the venv (.venv), if absent.
@@ -13,7 +13,7 @@
 #      it reports it and won't start a second time.
 #
 # Usage:
-#   bash claude-tg-bot.sh
+#   ./claude-tg-bot
 # ================================================================
 set -euo pipefail
 
@@ -22,7 +22,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
 # --- 0. Prepare the environment (Python + venv + deps) ----------------------
-# Moved into the shared module lib/env.sh so setup.sh can use it too.
+# Moved into the shared module lib/env.sh so claude-tg-bot-setup can use it too.
 # setup_env() picks Python >=3.10, creates/recreates the venv, installs the
 # dependencies. We run the bot via $VENV/bin/python (we don't activate the venv).
 source "$DIR/lib/env.sh"
@@ -30,7 +30,7 @@ setup_env
 
 # config.env is looked up in two places (by priority, as in config.py):
 #   1. ~/.claude-tg-bot/config.env  — the directory that holds the sandbox;
-#   2. <script directory>/config.env — next to claude-tg-bot.sh.
+#   2. <script directory>/config.env — next to claude-tg-bot.
 # The bot prints PROJECTS_ROOT and SANDBOX_ROOT itself in main — right after
 # config.env, so they come consecutively.
 CONFIG_ENV="${HOME}/.claude-tg-bot/config.env"
@@ -101,7 +101,8 @@ if { [ "$KEEP_AWAKE" = "true" ] || [ "$KEEP_AWAKE" = "1" ] || [ "$KEEP_AWAKE" = 
     echo "$(lib_msg run.sh.keep_awake_empty)" 1>&2
     exit 1
 fi
-echo "$(lib_msg run.sh.launching)"
+BOT_VERSION="$("$VENV/bin/python" -c 'import claude_tg_bot; print(claude_tg_bot.__version__)' 2>/dev/null || true)"
+echo "$(lib_msg run.sh.launching)" | sed "s|{ver}|$BOT_VERSION|"
 # "$@" below — pass through the call arguments (e.g. --log=info) into python -m.
 # We run via $VENV/bin/python (we didn't activate the venv in setup_env).
 # The keep-awake command is word-split so "caffeinate -dimsu" becomes argv.

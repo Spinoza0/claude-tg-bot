@@ -173,6 +173,14 @@ bumped `main` does not automatically get a tag/release on every merge.
 7. **GitHub Release**: create a release via `gh release create v0.3.0` with a
    changelog (what was added/changed relative to the previous tag).
 
+8. **Update the Homebrew formula** (automatic, no reminder): the
+   `claude-tg-bot` formula lives in the separate tap repo
+   `Spinoza0/homebrew-tap` (`Formula/claude-tg-bot.rb`). On every released tag
+   bump the formula's `version` `url` and `sha256` to the new tag archive (no
+   manual edit by the user). `brew install Spinoza0/tap/claude-tg-bot` must
+   always resolve to the latest release. Update the tap before/while releasing
+   the new tag; commit the formula change in the tap repo.
+
 ### Versioning rules
 
 - **Semver**: `MAJOR.MINOR.PATCH`.

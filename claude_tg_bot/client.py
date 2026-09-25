@@ -157,7 +157,6 @@ async def main():
     # single status line instead of a flood on stderr.
     _STATUS_FILTER.install()
 
-    print(i18n.t("client.startup", name=config.SESSION_NAME))
     # run.sh already showed the config.env path (==> config.env). Here we print the
     # projects root and the sandbox directory in a row, so it's clear what's where.
     print(i18n.t("client.root", path=config.PROJECTS_ROOT))

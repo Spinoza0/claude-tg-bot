@@ -69,7 +69,6 @@
 
   "client.connect_retry": "{friendly}. Повтор через {mins} мин ({attempt}/{limit})...",
   "client.connect_fail": "\n❌ Не удалось подключиться к Telegram после {limit} попыток: {friendly}\n",
-  "client.startup": "Запуск бота. Telegram-сессия: {name}",
   "client.root": "Корень проектов (PROJECTS_ROOT): {path}",
   "client.sandbox_dir": "Каталог песочницы ({cmd}): {path}",
   "client.mtproxy": "MT-прокси: {state}",
@@ -110,7 +109,7 @@
   "setup.not_saved": "   Ничего не сохранено. Перезапусти setup.sh и заполни их.",
   "setup.result": "\n--- Итог: {path}",
   "setup.done1": "\nГотово. Дальше:",
-  "setup.done2": "  1. Запусти: bash claude-tg-bot.sh",
+  "setup.done2": "  1. Запусти: ./claude-tg-bot",
   "setup.done3": "  2. При первом входе MTProto-клиент запросит код подтверждения из Telegram.",
 
   "log.found_old": "⚠️ Найдены старые логи ({n} файл(ов) в {path}).",
@@ -124,8 +123,7 @@
 
   "env.sh.no_python": "!! Не найден Python 3.10+. Требуется >=3.10 (нужен для kurigram).",
   "env.sh.no_python_hint": "   Установи Python 3.10+ или задай путь: PYTHON=/path/to/python3.13",
-  "env.sh.python": "==> Python: {py} ({ver})",
-  "env.sh.rebuild_venv": "==> venv собран старым Python ({old}), удаляю и пересоздаю через {py}",
+    "env.sh.rebuild_venv": "==> venv собран старым Python ({old}), удаляю и пересоздаю через {py}",
   "env.sh.create_venv": "==> venv не найден, создаю: {venv} (через {py})",
   "env.sh.install_deps": "==> Устанавливаю зависимости из requirements.txt ...",
 
@@ -142,7 +140,7 @@
   "run.sh.fix_chat_ids": "     - ALLOWED_CHAT_IDS (id чата, где бот отвечает — см. README)",
   "run.sh.chat_ids_empty": "ℹ️  ALLOWED_CHAT_IDS пуст — бот будет отвечать только в «Избранном».",
   "run.sh.chat_ids_empty_hint": "   (в группах отвечать не будет). Другой чат — впиши id в config.env.",
-  "run.sh.launching": "==> Запускаю бота...",
+  "run.sh.launching": "==> Запускаю бота (v{ver})...",
   "run.sh.keep_awake_empty": "KEEP_AWAKE включено, но KEEP_AWAKE_COMMAND пусто — задайте его в config.env (или отключите KEEP_AWAKE).",
   "setup.need_keep_awake_command": "KEEP_AWAKE включено — требуется непустой KEEP_AWAKE_COMMAND.",
 

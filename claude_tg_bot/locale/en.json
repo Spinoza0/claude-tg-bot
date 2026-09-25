@@ -69,7 +69,6 @@
 
   "client.connect_retry": "{friendly}. Retrying in {mins} min ({attempt}/{limit})...",
   "client.connect_fail": "\n❌ Could not connect to Telegram after {limit} attempts: {friendly}\n",
-  "client.startup": "Starting the bot. Telegram session: {name}",
   "client.root": "Projects root (PROJECTS_ROOT): {path}",
   "client.sandbox_dir": "Sandbox folder ({cmd}): {path}",
   "client.mtproxy": "MT-Proxy: {state}",
@@ -110,7 +109,7 @@
   "setup.not_saved": "   Nothing saved. Re-run setup.sh and fill them in.",
   "setup.result": "\n--- Result: {path}",
   "setup.done1": "\nDone. Next:",
-  "setup.done2": "  1. Run: bash claude-tg-bot.sh",
+  "setup.done2": "  1. Run: ./claude-tg-bot",
   "setup.done3": "  2. On first login the MTProto client will ask for a confirmation code from Telegram.",
 
   "log.found_old": "⚠️ Old logs found ({n} file(s) in {path}).",
@@ -124,8 +123,7 @@
 
   "env.sh.no_python": "!! Python 3.10+ not found. Requires >=3.10 (needed for kurigram).",
   "env.sh.no_python_hint": "   Install Python 3.10+ or set the path: PYTHON=/path/to/python3.13",
-  "env.sh.python": "==> Python: {py} ({ver})",
-  "env.sh.rebuild_venv": "==> venv built with old Python ({old}), deleting and recreating via {py}",
+    "env.sh.rebuild_venv": "==> venv built with old Python ({old}), deleting and recreating via {py}",
   "env.sh.create_venv": "==> venv not found, creating: {venv} (via {py})",
   "env.sh.install_deps": "==> Installing dependencies from requirements.txt ...",
 
@@ -142,7 +140,7 @@
   "run.sh.fix_chat_ids": "     - ALLOWED_CHAT_IDS (the chat id where the bot answers — see README)",
   "run.sh.chat_ids_empty": "ℹ️  ALLOWED_CHAT_IDS is empty — the bot will only answer in Saved Messages.",
   "run.sh.chat_ids_empty_hint": "   (it will not answer in groups). To use another chat, write its id in config.env.",
-  "run.sh.launching": "==> Launching bot...",
+  "run.sh.launching": "==> Launching bot (v{ver})...",
   "run.sh.keep_awake_empty": "KEEP_AWAKE is enabled but KEEP_AWAKE_COMMAND is empty — set it in config.env (or disable KEEP_AWAKE).",
   "setup.need_keep_awake_command": "KEEP_AWAKE is on — a non-empty KEEP_AWAKE_COMMAND is required.",
 
