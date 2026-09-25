@@ -82,9 +82,6 @@ SESSION_NAME: str = os.getenv("SESSION_NAME", "claude-tg-bot")
 # tg://proxy?server=example.example.com&port=443&secret=0000...
 MT_PROXY: str = os.getenv("MT_PROXY", "")
 
-# Cloud password (two-factor) — if any
-CLOUD_PASSWORD: Optional[str] = os.getenv("CLOUD_TOKEN_PASSWORD") or None
-
 def _parse_ids(raw: str) -> set:
     """Parse an id list from a string of comma-separated numbers.
 

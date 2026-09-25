@@ -43,9 +43,7 @@ def _build_client() -> Client:
         api_id=config.API_ID,
         api_hash=config.API_HASH,
         phone_number=config.PHONE,
-        password=config.CLOUD_PASSWORD,
-        # hide_password=True — hide the 2FA password prompt (getpass without echo)
-        # so it doesn't show in the terminal. The confirmation code remains visible.
+        # The 2FA cloud password is not in config.env — the user enters it at login.
         hide_password=True,
         proxy=config.MT_PROXY or None,
         # workers=1 — messages are processed SEQUENTIALLY. Otherwise Pyrogram
