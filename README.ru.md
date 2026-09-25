@@ -47,10 +47,10 @@ brew install Spinoza0/tap/claude-tg-bot
 ```
 
 Затем запустите интерактивную настройку (спрашивает параметры по группам,
-создаёт `~/.claude-tg-bot/config.env`) и бота:
+создаёт или обновляет `~/.claude-tg-bot/config.env`) и бота:
 
 ```bash
-claude-tg-bot-setup   # настройка: спросит параметры и создаст config.env
+claude-tg-bot-setup   # настройка: спросит параметры, создаст или обновит config.env
 claude-tg-bot         # запуск бота (сам создаст venv и поставит зависимости)
 ```
 

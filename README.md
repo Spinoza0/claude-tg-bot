@@ -53,11 +53,11 @@ Install via [Homebrew](https://brew.sh) from the tap:
 brew install Spinoza0/tap/claude-tg-bot
 ```
 
-Then run the interactive setup (asks parameters by groups, creates
+Then run the interactive setup (asks parameters by groups, creates or updates
 `~/.claude-tg-bot/config.env`) and launch the bot:
 
 ```bash
-claude-tg-bot-setup   # setup: prompt for parameters and create config.env
+claude-tg-bot-setup   # setup: prompt for parameters, create or update config.env
 claude-tg-bot         # launch the bot (creates venv and installs dependencies itself)
 ```
 
