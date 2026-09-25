@@ -151,11 +151,18 @@ async def _handle_config(message, parts: list[str]):
     unknown and skipped. A known key with a bad value is left unchanged with the
     allowed list. No args — show the editable settings and their current values.
     """
+    # The message text is split on spaces before reaching here, so "KEY = VALUE"
+    # arrives as ["KEY", "=", "VALUE"]. Strip spaces around '=' so both
+    # "KEY=VALUE" and "KEY = VALUE" give the same pair.
+    raw = " ".join(parts[1:])
+    while " = " in raw:
+        raw = raw.replace(" = ", "=")
+    raw = raw.replace(" =", "=").replace("= ", "=")
     pairs: dict[str, str] = {}
-    for arg in parts[1:]:
-        if "=" in arg:
-            key, _, val = arg.partition("=")
-            pairs[key.strip().upper()] = val.strip()
+    for chunk in raw.split():
+        if "=" in chunk:
+            key, _, val = chunk.partition("=")
+            pairs[key.upper()] = val.strip('"')
     if not pairs:
         values = {
             "BOT_LANG": i18n.current_lang(),
