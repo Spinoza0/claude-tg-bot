@@ -283,12 +283,12 @@ _AGENT_GENDER = (os.getenv("AGENT_GENDER") or "").strip().lower()
 AGENT_GENDER: str = _AGENT_GENDER if _AGENT_GENDER in {"male", "female"} else "male"
 
 
-def write_lang_to_config(lang: str) -> bool:
-    """Persist ``BOT_LANG`` into the resolved config.env (if found).
+def write_config_value(key: str, value: str) -> bool:
+    """Persist ``KEY=value`` into the resolved config.env (if found).
 
-    Rewrites only the ``BOT_LANG=...`` line (or appends it if absent) so the
-    language survives a restart. Returns True on success. Deliberately does
-    not read secrets — only touches the single language key line.
+    Rewrites only the line starting with ``KEY=`` (or appends it if absent) so
+    the change survives a restart. Returns True on success. Deliberately does
+    not read secrets — only touches the single key line, never the other values.
     """
     if CONFIG_ENV_PATH is None:
         return False
@@ -298,17 +298,45 @@ def write_lang_to_config(lang: str) -> bool:
         out = []
         replaced = False
         for ln in lines:
-            if ln.lstrip().startswith("BOT_LANG"):
-                out.append(f"BOT_LANG={lang}\n")
+            if ln.lstrip().startswith(f"{key}="):
+                out.append(f"{key}={value}\n")
                 replaced = True
             else:
                 out.append(ln)
         if not replaced:
-            out.append(f"BOT_LANG={lang}\n")
+            out.append(f"{key}={value}\n")
         path.write_text("".join(out), encoding="utf-8")
         return True
     except OSError:
         return False
+
+
+def set_config_value(key: str, value: str) -> bool:
+    """Apply ``KEY=value`` to the running config and persist it to config.env.
+
+    Returns True on success. The in-memory value (e.g. SANDBOX_COMMAND,
+    BOT_LANG) is refreshed so the change takes effect on the fly, and it's
+    written to config.env so it survives a restart.
+    """
+    setattr(globals(), key, value)
+    return write_config_value(key, value)
+
+
+# Settings that /config may change. These are exactly the ones that take effect
+# immediately (live, no restart) and are safe to tweak from a chat. Any other
+# key in /config is rejected as unknown — it stays on the blacklist implicitly.
+EDITABLE_CONFIG_KEYS = frozenset({
+    "BOT_LANG", "AGENT_GENDER", "SANDBOX_COMMAND",
+})
+
+
+def is_config_key_editable(key: str) -> bool:
+    """Whether /config may change this setting (case-insensitive, full name)."""
+    return key.upper() in EDITABLE_CONFIG_KEYS
+
+
+def write_lang_to_config(lang: str) -> bool:
+    return write_config_value("BOT_LANG", lang)
 
 
 def validate() -> None:

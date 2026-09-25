@@ -34,11 +34,13 @@ DEFAULT_CHOICES = {
     "AUTO_DELETE_ATTACH": ["true", "false"],
     "DELETE_MODE": ["trash", "permanent"],
     "CLAUDE_PERMISSION_MODE": ["bypassPermissions", "acceptEdits", "plan", "default"],
+    "AGENT_GENDER": ["male", "female"],
 }
 
 GROUPS = [
     ("Language", [
         ("BOT_LANG", True, "en", "Bot language (Telegram + console)"),
+        ("AGENT_GENDER", False, "male", "Agent's grammatical gender (male/female)"),
     ]),
     ("Telegram (mandatory)", [
         ("API_ID", True, "", "App ID (my.telegram.org/apps)"),

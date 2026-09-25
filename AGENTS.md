@@ -303,3 +303,11 @@ English in the code. They come from the shared locale files
 `config.env` (default `en`). Both Python and the bash scripts read the same
 files. When you add a new user-facing message, add both the `en` key (mandatory)
 and the `ru` key (translation) to the locale files — do not inline the string.
+
+The bot language is changed live via the `/config` command (plain message, no
+sandbox codeword), not a dedicated `/lang` command. `/config` only edits the
+"live" settings (see `config.EDITABLE_CONFIG_KEYS`): `BOT_LANG`, `AGENT_GENDER`,
+`SANDBOX_COMMAND` — full names, case-insensitive; any other key is rejected.
+`AGENT_GENDER` (male/female) also adds a gender system-prompt to Claude's call
+(see `runner._gender_prompt`), so it must be kept in sync when the prompt text
+or the locale keys change.
