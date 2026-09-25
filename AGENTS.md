@@ -276,9 +276,13 @@ ALLOWED_CHAT_IDS="123456789,-1234567890"
   (author + type + quoted text/caption) to the prompt, and downloads the quoted
   attachments into the working dir's `.claude_tg_bot_attach` (merged into
   `image_paths`), so Claude sees both the question and what it refers to.
-- **Anti-loop**: only the bot's own `outgoing + reply` messages are ignored
-  (`on_all_message`). A human reply to a bot message IS processed and includes
-  that bot message as context (a normal follow-up, no loop).
+- **Anti-loop**: `on_all_message` ignores only messages the bot itself has sent,
+  tracked by a register of sent ids (`reply.register_sent` / `is_bot_message`,
+  with a 1-hour TTL). In a **userbot** the bot and the owner are the same account,
+  so both the bot's answers and the owner's replies come as `outgoing` — the
+  register (not a `reply_to_message_id` check) is what tells them apart, so the
+  owner's replies are processed and the bot never loops. A human reply to a bot
+  message IS a valid follow-up that includes that bot message as context.
 - **Depth**: `reply_context.MAX_QUOTE_DEPTH` (hard-coded) bounds the quote chain;
   `QUOTE_TEXT_MAX_LEN` truncates long quoted text. Both are code constants (no
   config value) — a guard, not a setting.

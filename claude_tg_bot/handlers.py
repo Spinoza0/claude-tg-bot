@@ -30,7 +30,7 @@ from .attach import (
     _sniff_image_ext,
     _textual_attach_prompt,
 )
-from .reply import _reply, _send_attachment, _send_split, _send_with_retry
+from .reply import _reply, _send_attachment, _send_split, _send_with_retry, is_bot_message
 from .runner import extract_file_markers
 from .sandbox import _is_sandbox_message, _strip_sandbox_prefix
 from .status import _is_model_unavailable, _is_run_error, _report_run_error
@@ -118,10 +118,12 @@ async def on_all_message(client, message: Message):
     the sender is an allowed user (ALLOWED_USERS). Everything else (other chats,
     foreign members) is silently ignored.
     """
-    # Ignore our own outgoing replies: the bot == our account, so its answers
-    # ("working", the result) come as outgoing + reply. Otherwise the bot would
-    # loop on itself. Your regular messages (not replies) are processed.
-    if message.outgoing and message.reply_to_message_id is not None:
+    # Ignore the bot's OWN messages: in a userbot the bot and the owner are the
+    # same account, so the owner's replies also come as outgoing. The register of
+    # sent ids (reply.register_sent) distinguishes the bot's own answers (busy,
+    # the result, status) from the owner's genuine requests — only those get
+    # ignored, so the bot never loops and the owner's replies are processed.
+    if is_bot_message(message):
         return
 
     user_id = _author(message)
