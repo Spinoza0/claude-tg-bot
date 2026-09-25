@@ -45,7 +45,6 @@ GROUPS = [
         ("API_HASH", True, "", "App hash (my.telegram.org/apps)"),
         ("PHONE", True, "", "Telegram account number, e.g. +79991234567"),
         ("MT_PROXY", False, "", "MTProto proxy (tg://proxy?server=..&port=..&secret=..). Empty — direct connection"),
-        ("CLOUD_TOKEN_PASSWORD", False, "", "2FA (cloud) password, if two-factor is enabled"),
     ]),
     ("Access", [
         ("ALLOWED_USERS", True, "", "user_id of those the bot answers (comma-separated). Empty — bot is closed"),
