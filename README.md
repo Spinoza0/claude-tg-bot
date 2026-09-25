@@ -44,6 +44,12 @@ Telegram account  (userbot)
   them from the visible text and sends the files back (photo/video/audio/document
   by extension). The files land in the same folder as downloaded attachments, so
   `/clearattach` cleans them too.
+- **Replies** — when you reply to a message, the bot feeds the quoted message's
+  content (its text, author and any attachments) to Claude as context, alongside
+  your own text. It works in an allowed chat (regular project) or in any chat
+  when you use the sandbox trigger (`@helpbot`). Replying to the bot's own answer
+  continues the dialogue (the bot's answer becomes context); the bot never loops
+  on its own messages.
 
 ## Install and setup
 
