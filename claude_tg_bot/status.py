@@ -10,6 +10,7 @@ output, and print a status block to the console — "🟢 Working" or
 
 import asyncio
 import logging
+import re
 import shutil
 import sys
 import threading
@@ -164,8 +165,15 @@ def _use_color() -> bool:
     return sys.stdout.isatty()
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
 def _display_width(s: str) -> int:
-    """Visible width in terminal columns (emojis/wide glyphs = 2, else 1)."""
+    """Visible width in terminal columns (emojis/wide glyphs = 2, else 1).
+
+    ANSI color codes (\\x1b[...m) take no column — strip them before counting.
+    """
+    s = _ANSI_RE.sub("", s)
     w = 0
     for ch in s:
         cp = ord(ch)
@@ -198,6 +206,43 @@ def _fit_width(text: str) -> str:
     return "".join(out) + "…"
 
 
+def _wrap(text: str) -> list[str]:
+    """Split a long error text into terminal-width lines (no ellipsis, no cut).
+
+    Unlike _fit_width (which truncates the message), we wrap: the message keeps
+    every word and line, just continues on the next row. Each returned line is at
+    most the terminal column width, so _draw_status' height tracking (len(lines))
+    stays correct and nothing gets clipped. ANSI codes are absent from the text
+    here (color is applied outside), so we count pure visible width.
+    """
+    width = shutil.get_terminal_size().columns or 80
+    lines: list[str] = []
+    for raw in text.split("\n"):
+        if not raw:
+            lines.append("")
+            continue
+        cur = ""
+        cur_w = 0
+        for word in raw.split(" "):
+            if not word:
+                continue
+            w = _display_width(word)
+            new_w = cur_w + (1 if cur else 0) + w
+            if new_w <= width:
+                if cur:
+                    cur += " "
+                    cur_w += 1
+                cur += word
+                cur_w += w
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = word
+                cur_w = w
+        lines.append(cur)
+    return lines
+
+
 def _friendly(record: str) -> str:
     """Turn a raw Pyrogram message into a user-friendly error.
 
@@ -213,9 +258,8 @@ def _friendly(record: str) -> str:
         return i18n.t("status.err_no_connection")
     if "internal server" in r or "interdc" in r or "500" in r:
         return i18n.t("status.err_temp_telegram")
-    # Unknown — trim to the first 120 chars as plain text without quotes.
-    msg = record.strip().strip('"')
-    return msg if len(msg) <= 120 else msg[:120] + "…"
+    # Unknown — show the whole message as plain text without quotes, no cut-off.
+    return record.strip().strip('"')
 
 
 # Number of lines the last status block took (for redrawing).
@@ -268,27 +312,39 @@ def _status_lines(err_display: str, err_ts: float, err_active: bool, work_ts: fl
     def fmt(t: float) -> str:
         return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)) if t else ""
     work_ts_s = fmt(work_ts)
+    work = (
+        f"\033[32m{i18n.t('status.working')}\033[0m [{work_ts_s}]"
+        if color
+        else f"{i18n.t('status.working')} [{work_ts_s}]"
+    )
     if err_active:
-        if color:
-            work = f"\033[32m{i18n.t('status.working')}\033[0m [{work_ts_s}]"
-            err = f"\033[31m{i18n.t('status.error', err=err_display)}\033[0m [{fmt(err_ts)}]"
-        else:
-            work = f"{i18n.t('status.working')} [{work_ts_s}]"
-            err = f"{i18n.t('status.error', err=err_display)} [{fmt(err_ts)}]"
-        return [work, err]
+        return [work] + _error_lines(err_display, fmt(err_ts), color)
     if color:
         work = f"\033[32m{i18n.t('status.working_ok')}\033[0m [{work_ts_s}]"
-        if err_display:
-            err = f"\033[31m{i18n.t('status.error', err=err_display)}\033[0m [{fmt(err_ts)}]"
-        else:
-            err = ""
     else:
         work = f"{i18n.t('status.working_ok')} [{work_ts_s}]"
-        err = f"{i18n.t('status.error', err=err_display)} [{fmt(err_ts)}]" if err_display else ""
     lines = [work]
-    if err:
-        lines.append(err)
+    if err_display:
+        lines += _error_lines(err_display, fmt(err_ts), color)
     return lines
+
+
+def _error_lines(err_display: str, ts: str, color: bool) -> list[str]:
+    """Build the error rows: the timestamp right after "Error:", then the message.
+
+    The whole message is wrapped to the terminal width (never truncated), so a
+    long Pyrogram error continues on the next rows instead of being cut. The
+    first row carries the red "Error: [ts]" prefix; the continuation rows are
+    plain (no re-applied prefix).
+    """
+    prefix = i18n.t("status.error", err="")
+    head = f"{prefix}[{ts}]" if ts else prefix
+    head = f"{head} " if head and not head.endswith(" ") else head
+    wrapped = _wrap(err_display) or [""]
+    first = head + wrapped[0]
+    if color:
+        return [f"\033[31m{first}\033[0m"] + wrapped[1:]
+    return [first] + wrapped[1:]
 
 
 async def _status_loop(stop: asyncio.Event) -> None:

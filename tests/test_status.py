@@ -281,6 +281,23 @@ class TestDrawStatus(unittest.TestCase):
         self.assertEqual(st._fit_width("a" * 500)[-1], "…")
         self.assertLess(len(st._fit_width("a" * 500)), 500)
 
+    def test_error_lines_puts_time_after_error(self):
+        # The timestamp goes right after "Error:", not at the end of the line.
+        import time as _t
+        stamp = _t.strftime("%Y-%m-%d %H:%M:%S", _t.localtime(1000000000.0))
+        lines = st._error_lines("boom", stamp, color=False)
+        self.assertTrue(lines[0].startswith(f"❌ Error: [{stamp}]"))
+        self.assertIn("boom", lines[0])
+
+    def test_error_lines_wraps_instead_of_cut(self):
+        # A long message is wrapped to the next rows, never truncated to "…".
+        long = "API Error: 502 Cannot connect to host llm.wb.ru:443 ssl:default [nodename nor servname]"
+        lines = st._error_lines(long, 1000000000.0, color=False)
+        joined = "".join(l for l in lines if not l.startswith("❌"))
+        self.assertTrue(len(lines) > 1)
+        self.assertIn("servname", joined)
+        self.assertNotIn("…", "".join(lines))
+
 
 if __name__ == "__main__":
     unittest.main()
