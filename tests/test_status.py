@@ -154,10 +154,10 @@ class TestStatusLoop(unittest.TestCase):
         printed = asyncio.run(scenario())
         self.assertTrue(printed)
         last = printed[-1]
-        self.assertEqual(len(last), 2)
-        self.assertIn("🟢", last[0])             # ok — Working with 🟢
-        self.assertIn("❌", last[1])             # error always with ❌
-        self.assertIn("Error", last[1])
+        self.assertEqual(len(last), 1)          # ok — only Working with 🟢
+        self.assertIn("🟢", last[0])            # ok — Working with 🟢
+        self.assertNotIn("❌", last[0])         # stale error hidden — no ❌
+        self.assertNotIn("Error", last[0])
 
 
 class TestRunError(unittest.TestCase):
