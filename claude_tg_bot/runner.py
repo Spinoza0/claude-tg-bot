@@ -20,6 +20,7 @@ import shlex
 import signal
 import sys
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional
@@ -207,6 +208,8 @@ async def run_claude(
 
     out_lines: list[str] = []
     err_lines: list[str] = []
+    # Monotonic time of the last output chunk, for the idle timeout.
+    last_activity = time.monotonic()
 
     async def _read(name, stream):
         """Read the stream in CHUNKS, not line by line.
@@ -218,6 +221,7 @@ async def run_claude(
         → the process blocks → the bot hangs until the timeout. So we read raw
         chunks and split into lines manually.
         """
+        nonlocal last_activity
         buf = ""  # the tail of an incomplete line between chunks
         target = out_lines if name == "stdout" else err_lines
         try:
@@ -225,6 +229,7 @@ async def run_claude(
                 raw = await stream.read(65536)
                 if not raw:
                     break
+                last_activity = time.monotonic()
                 buf += raw.decode(errors="replace")
                 # Split by newlines; the last incomplete piece stays in buf.
                 *parts, buf = buf.split("\n")
@@ -260,7 +265,23 @@ async def run_claude(
 
     try:
         if config.CLAUDE_TIMEOUT_SECONDS > 0:
-            await asyncio.wait_for(proc.wait(), timeout=config.CLAUDE_TIMEOUT_SECONDS)
+            # Idle timeout: abort only when Claude has produced NO output for the
+            # whole window. A long request that is actively working (still writing)
+            # is never cut; only a truly stalled process triggers the timeout.
+            idle_limit = config.CLAUDE_TIMEOUT_SECONDS
+            while True:
+                remaining = idle_limit - (time.monotonic() - last_activity)
+                if remaining <= 0:
+                    raise asyncio.TimeoutError
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=remaining)
+                    break  # process exited on its own
+                except asyncio.TimeoutError:
+                    # The window elapsed, but if output arrived meanwhile the idle
+                    # clock reset — keep waiting instead of a false positive.
+                    if time.monotonic() - last_activity >= idle_limit:
+                        raise asyncio.TimeoutError
+                    continue
         else:
             await proc.wait()
     except asyncio.TimeoutError:

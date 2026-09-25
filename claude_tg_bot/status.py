@@ -297,14 +297,12 @@ def _draw_status(lines: list[str]) -> None:
 
 
 def _status_lines(err_display: str, err_ts: float, err_active: bool, work_ts: float) -> list[str]:
-    """Assemble the status block rows: working state + last error.
+    """Assemble the status block rows — only the CURRENT state, one icon at a time.
 
-    The icon (🟢/❌) reflects the current state:
-      - if there's a problem now (err_active=True) — ❌ on the error, "Working"
-        without 🟢;
-      - if all is well — 🟢 on "Working"; the last error is still shown with ❌
-        (as history), but a stale one drops no 🟢 from the working row.
-    No errors at all — only "Working".
+    Only the active state is shown, with its icon: if there's a problem now
+    (err_active=True) — the ❌ error (and "Working" without 🟢); if all is well —
+    🟢 "Working" only, and the diagnostic error is hidden. So 🟢 and ❌ never
+    overlap on screen: no stale error history next to a healthy status.
     work_ts — the time the "working" state was established (NOT ticking every
     loop, otherwise the line would change and the block would keep redrawing).
     """
@@ -312,21 +310,18 @@ def _status_lines(err_display: str, err_ts: float, err_active: bool, work_ts: fl
     def fmt(t: float) -> str:
         return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)) if t else ""
     work_ts_s = fmt(work_ts)
-    work = (
-        f"\033[32m{i18n.t('status.working')}\033[0m [{work_ts_s}]"
-        if color
-        else f"{i18n.t('status.working')} [{work_ts_s}]"
-    )
     if err_active:
+        work = (
+            f"\033[32m{i18n.t('status.working')}\033[0m [{work_ts_s}]"
+            if color
+            else f"{i18n.t('status.working')} [{work_ts_s}]"
+        )
         return [work] + _error_lines(err_display, fmt(err_ts), color)
     if color:
         work = f"\033[32m{i18n.t('status.working_ok')}\033[0m [{work_ts_s}]"
     else:
         work = f"{i18n.t('status.working_ok')} [{work_ts_s}]"
-    lines = [work]
-    if err_display:
-        lines += _error_lines(err_display, fmt(err_ts), color)
-    return lines
+    return [work]
 
 
 def _error_lines(err_display: str, ts: str, color: bool) -> list[str]:
@@ -348,12 +343,12 @@ def _error_lines(err_display: str, ts: str, color: bool) -> list[str]:
 
 
 async def _status_loop(stop: asyncio.Event) -> None:
-    """Background: every 1.5s keeps a block — "working" + last error.
+    """Background: every 1.5s keeps a block — the current state only.
 
-    The ❌/🟢 icon is set only on the current state: ❌ on a fresh error, 🟢 on a
-    healthy one. The last error (if any) is always shown, but without ❌ when all
-    is well now, and carries its time. The error is not duplicated (the block is
-    only printed when it changes).
+    The ❌/🟢 icon reflects exactly the current state, never both: ❌ on an active
+    error (the "Working" row loses its 🟢), 🟢 on a healthy one (the stale error
+    is hidden, so its diagnostic text and ❌ disappear once the bot recovers).
+    The block is redrawn only when the content changes.
     """
     prev = None
     prev_err = None
