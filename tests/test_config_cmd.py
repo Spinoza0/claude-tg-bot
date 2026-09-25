@@ -52,6 +52,26 @@ class TestHandleConfig(unittest.IsolatedAsyncioTestCase):
             config.write_config_value = saved_write
             config.set_config_value = saved_set
 
+    async def test_spaces_around_equals_parse(self):
+        # "SANDBOX_COMMAND = @Олег" (spaces around '=') parses to the same pair.
+        self.captured = []
+        saved = commands._reply
+        async def fake_reply(message, text):
+            self.captured.append(text)
+        commands._reply = fake_reply
+        saved_write = config.write_config_value
+        config.write_config_value = lambda k, v: True
+        saved_set = config.set_config_value
+        config.set_config_value = lambda k, v: True
+        try:
+            await commands._handle_config(object(),
+                                          ["/config", "SANDBOX_COMMAND", "=", "@Олег"])
+            self.assertTrue(any("SANDBOX_COMMAND = @Олег" in r for r in self.captured))
+        finally:
+            commands._reply = saved
+            config.write_config_value = saved_write
+            config.set_config_value = saved_set
+
     async def test_unknown_key_answers(self):
         self.captured = []
         saved = commands._reply
