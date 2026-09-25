@@ -102,16 +102,21 @@ async def _send_with_retry(message: Message, text: str, attempts: int | None = N
 # else (PDF, archives, spreadsheets, ...).
 _IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 _VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".avi"}
-_AUDIO_EXT = {".mp3", ".ogg", ".opus", ".m4a", ".wav", ".flac"}
+# Telegram's voice message accepts only OGG/Opus — the rest of the audio is sent
+# as a regular audio (music) file.
+_VOICE_EXT = {".ogg", ".opus"}
+_AUDIO_EXT = {".mp3", ".m4a", ".wav", ".flac"}
 
 
 def _attachment_kind(path: str) -> str:
-    """The send kind for a file by extension: 'photo', 'video', 'audio', 'document'."""
+    """The send kind for a file by extension: 'photo', 'video', 'voice', 'audio', 'document'."""
     ext = Path(path).suffix.lower()
     if ext in _IMAGE_EXT:
         return "photo"
     if ext in _VIDEO_EXT:
         return "video"
+    if ext in _VOICE_EXT:
+        return "voice"
     if ext in _AUDIO_EXT:
         return "audio"
     return "document"
@@ -147,6 +152,8 @@ async def _send_attachment_once(client, message: Message, path, kind: str):
         sent = await client.send_photo(chat_id, str(path))
     elif kind == "video":
         sent = await client.send_video(chat_id, str(path))
+    elif kind == "voice":
+        sent = await client.send_voice(chat_id, str(path))
     elif kind == "audio":
         sent = await client.send_audio(chat_id, str(path))
     else:

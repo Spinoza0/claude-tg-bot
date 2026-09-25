@@ -269,7 +269,9 @@ ALLOWED_CHAT_IDS="123456789,-1234567890"
   live in `locale/` (no `en`/`ru` keys) — it stays one English default.
 - Claude marks a file to send back with a `[FILE: <path>]` line; the bot parses it
   in `runner.extract_file_markers`, sends the file via `reply._send_attachment`
-  (photo/video/audio/document by extension) and hides the marker line from the text.
+  (photo/video/voice/audio/document by extension; `.ogg`/`.opus` are sent as a
+  voice message via `send_voice`, the rest of the audio as `send_audio`) and hides
+  the marker line from the text.
 - Result files go into the working dir's `.claude_tg_bot_attach` subfolder (the
   same folder as downloaded attachments), so `/clearattach` cleans them. Paths from
   the marker are resolved against the working dir and must NOT escape it
