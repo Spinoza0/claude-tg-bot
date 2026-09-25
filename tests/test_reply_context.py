@@ -73,7 +73,8 @@ class TestCollectReplyContext(unittest.TestCase):
         # Header is localized — just check the leading bracket and the content.
         self.assertTrue(rc.text_block.startswith("["))
         self.assertIn("Original message", rc.text_block)
-        self.assertIn("Alice", rc.text_block)
+        # The quoted author is not included in the context.
+        self.assertNotIn("Alice", rc.text_block)
         self.assertEqual(rc.image_paths, [])
 
     def test_chain_reply_on_reply(self):
