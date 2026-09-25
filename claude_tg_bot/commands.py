@@ -8,7 +8,7 @@ from pathlib import Path
 
 from pyrogram.types import Message
 
-from . import config, i18n
+from . import config, i18n, sandbox
 from .runner import format_command_hint
 from .sessions import find_latest_session, is_safe_project_name, store
 from .access import _author
@@ -19,7 +19,7 @@ from .reply import _reply
 # Reserved slash commands handled by on_command (lowercase, without the '/').
 # Used to validate that SANDBOX_COMMAND never shadows a bot command (see setup.py).
 RESERVED_COMMANDS = {
-    "start", "help", "list", "switch", "new", "status", "lang",
+    "start", "help", "list", "switch", "new", "status", "config",
     "kill", "clearattach", "attachsize",
 }
 
@@ -109,28 +109,13 @@ async def on_command(client, message: Message, text: str, sandbox: bool = False)
         )
         await _reply(message, "\n".join(lines))
 
-    elif cmd == "/lang":
-        # Switch language on the fly: without an argument — show current and
-        # available; with one (e.g. "ru"/"en") — switch and write to config.env.
-        lang_arg = parts[1] if len(parts) > 1 else ""
-        available = i18n.available_langs()
-        if not lang_arg:
-            current = i18n.current_lang()
-            await _reply(
-                message,
-                i18n.t("cmd.lang_current", current=current, langs=", ".join(available)),
-            )
+    elif cmd == "/config":
+        # /config is a plain-message command only: it must NOT be reachable via
+        # the sandbox codeword (which would let any chat change bot settings).
+        if sandbox:
+            await _reply(message, i18n.t("cmd.config_sandbox_denied"))
             return
-        new_code = i18n.set_lang(lang_arg)
-        if new_code != lang_arg.strip().lower():
-            # Code not among the available ones — we stayed on the previous lang.
-            await _reply(message, i18n.t("cmd.lang_invalid", code=lang_arg, langs=", ".join(available)))
-            return
-        if config.write_lang_to_config(new_code):
-            await _reply(message, i18n.t("cmd.lang_ok", code=new_code))
-        else:
-            # config.env not found — switch only for the current session.
-            await _reply(message, i18n.t("cmd.lang_ok_ephemeral", code=new_code))
+        await _handle_config(message, parts)
 
     elif cmd == "/kill":
         # Kill ONLY hung claude clusters launched BY THIS bot.
@@ -155,6 +140,73 @@ async def on_command(client, message: Message, text: str, sandbox: bool = False)
 
     else:
         return
+
+
+async def _handle_config(message, parts: list[str]):
+    """/config key=value ... — change bot settings live (plain messages only).
+
+    Only the editable settings (config.EDITABLE_CONFIG_KEYS) are accepted:
+    BOT_LANG, AGENT_GENDER, SANDBOX_COMMAND. Keys are matched case-insensitively
+    and must be the full setting name (no aliases); any other key is reported as
+    unknown and skipped. A known key with a bad value is left unchanged with the
+    allowed list. No args — show the editable settings and their current values.
+    """
+    pairs: dict[str, str] = {}
+    for arg in parts[1:]:
+        if "=" in arg:
+            key, _, val = arg.partition("=")
+            pairs[key.strip().upper()] = val.strip()
+    if not pairs:
+        values = {
+            "BOT_LANG": i18n.current_lang(),
+            "AGENT_GENDER": config.AGENT_GENDER,
+            "SANDBOX_COMMAND": config.SANDBOX_COMMAND,
+        }
+        body = "\n".join(f"{k} = {v}" for k, v in values.items())
+        await _reply(message, i18n.t("cmd.config_current") + "\n" + body)
+        return
+
+    changes, reports = [], []
+    for key, value in pairs.items():
+        if not config.is_config_key_editable(key):
+            reports.append(i18n.t("cmd.config_unknown", key=key,
+                                  allowed=", ".join(sorted(config.EDITABLE_CONFIG_KEYS))))
+            continue
+        if key == "BOT_LANG":
+            code = value.strip().lower()
+            available = i18n.available_langs()
+            if code not in available:
+                reports.append(i18n.t("cmd.config_invalid", key=key, value=value,
+                                      allowed=", ".join(available)))
+                continue
+            config.set_config_value("BOT_LANG", code)
+            i18n.set_lang(code)
+            changes.append(i18n.t("cmd.config_changed", key=key, value=code))
+        elif key == "AGENT_GENDER":
+            code = value.strip().lower()
+            if code not in {"male", "female"}:
+                reports.append(i18n.t("cmd.config_invalid", key=key, value=value,
+                                      allowed="male, female"))
+                continue
+            config.set_config_value("AGENT_GENDER", code)
+            changes.append(i18n.t("cmd.config_changed", key=key, value=code))
+        elif key == "SANDBOX_COMMAND":
+            code = value.strip()
+            if not code or code.startswith("/") or code.lower().lstrip("/") in RESERVED_COMMANDS:
+                reports.append(i18n.t("cmd.config_invalid_sandbox", value=value))
+                continue
+            config.set_config_value("SANDBOX_COMMAND", code)
+            # The sandbox trigger is read at import time; refresh it live.
+            sandbox.SANDBOX_PREFIX = config.SANDBOX_COMMAND
+            changes.append(i18n.t("cmd.config_changed", key=key, value=code))
+
+    if changes:
+        full = i18n.t("cmd.config_done") + "\n" + "\n".join(changes)
+        if reports:
+            full += "\n" + "\n".join(reports)
+        await _reply(message, full)
+    elif reports:
+        await _reply(message, "\n".join(reports))
 
 
 async def _clear_attach(message, active: str, sandbox: bool = False, root: str = "", silent: bool = False):

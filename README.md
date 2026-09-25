@@ -128,6 +128,19 @@ Optional:
   `.claude_tg_bot_attach` and mark it with a `[FILE: <path>]` line. Empty — the
   built-in default is used (attachments are sent back). Set a custom text to
   change how Claude marks files (or to turn the built-in off).
+- `BOT_LANG` — the bot's message language (Telegram + console): `en` or `ru`.
+  One language = one file in `claude_tg_bot/locale/`. Empty/unknown → `en`.
+- `AGENT_GENDER` — the agent's grammatical gender (`male` | `female`), so the
+  bot refers to itself in the right form. Claude gets the gender hint via an
+  extra system prompt (writes correctly in any language), and the bot's own
+  Russian messages agree in gender. Empty → `male`.
+- `SANDBOX_COMMAND` — the trigger string to run the sandbox in any chat, e.g.
+  `@helpbot`. Must not collide with a reserved bot command.
+
+`BOT_LANG`, `AGENT_GENDER` and `SANDBOX_COMMAND` are **live** — they can be
+changed on the fly from an allowed chat (plain message, without the sandbox
+codeword) via `/config KEY=VALUE ...` (full setting names, case-insensitive).
+With no arguments `/config` shows them and their current values.
 - `SANDBOX_COMMAND` — the trigger string for launching the sandbox "in any chat":
   a message must start with it, then a space and a command/text (see below). If
   unset or empty — `@helpbot` is used (the bot mention). The value is shown in
@@ -229,6 +242,7 @@ without changes.
 | `/switch <name>` | Switch to an existing project |
 | `/new <name>` | Create and activate a project |
 | `/status` | Current project / path / session / active-task counter |
+| `/config KEY=VALUE ...` | Change a live setting (BOT_LANG, AGENT_GENDER, SANDBOX_COMMAND); with no args — show them and their values |
 | `/kill` | Kill stuck Claude processes launched by this bot |
 | `/clear` | First **automatically** calls `/clearattach` (attachment cleanup), then resets the Claude context (start a new session) |
 | `/clearattach` | Delete the current project's downloaded attachments (per `DELETE_MODE`) |
