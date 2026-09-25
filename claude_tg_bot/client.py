@@ -40,6 +40,9 @@ def _build_client() -> Client:
     """
     return Client(
         name=config.SESSION_NAME,
+        # Keep the .session in ~/.claude-tg-bot (not cwd), so it survives a
+        # brew upgrade / a different launch directory.
+        workdir=str(config.DATA_DIR),
         api_id=config.API_ID,
         api_hash=config.API_HASH,
         phone_number=config.PHONE,

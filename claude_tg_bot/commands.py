@@ -81,7 +81,8 @@ async def on_command(client, message: Message, text: str, sandbox: bool = False)
         # We do NOT reset the session: this project has its own session, and on
         # the next request find_latest_session picks it from disk for --resume.
         store.update(st)
-        await _reply(message, i18n.t("cmd.switched", name=name))
+        suffix = "f" if config.AGENT_GENDER == "female" else "m"
+        await _reply(message, i18n.t(f"cmd.switched_{suffix}", name=name))
 
     elif cmd == "/new":
         name = parts[1] if len(parts) > 1 else f"proj_{user_id}"

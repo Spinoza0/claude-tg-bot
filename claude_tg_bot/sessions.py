@@ -95,6 +95,7 @@ class SessionStore:
 
     def _save(self) -> None:
         try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
             payload = {str(uid): st.to_dict() for uid, st in self._users.items()}
             self._path.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
         except OSError:
