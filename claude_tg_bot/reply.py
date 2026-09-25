@@ -1,5 +1,6 @@
 """Sending bot messages: unified format + retries on transient Telegram errors."""
 
+import time
 from pathlib import Path
 
 from pyrogram.types import Message
@@ -11,10 +12,41 @@ from .retry import _run_with_retry
 # boundaries so we don't cut a thought mid-sentence.
 _MSG_LIMIT = 4000
 
+# Ids of messages the bot has sent (as replies or attachments), with the send
+# time, used by the anti-loop filter (on_all_message): an incoming outgoing
+# message whose id is here is the bot's own answer — not a request from the owner
+# (who shares the same account in a userbot), so we must not process it.
+# A TTL discards stale ids so the dict doesn't grow forever.
+_BOT_SENT: "dict[int, float]" = {}
+_SENT_TTL = 3600.0  # drop ids older than an hour
+
+
+def register_sent(message: Message) -> None:
+    """Remember an id of a message the bot just sent (for the anti-loop filter)."""
+    mid = getattr(message, "id", None)
+    if mid is not None:
+        _prune_sent()
+        _BOT_SENT[mid] = time.time()
+
+
+def _prune_sent() -> None:
+    """Drop ids older than _SENT_TTL (called on each register, keeps the dict small)."""
+    now = time.time()
+    stale = [i for i, ts in _BOT_SENT.items() if now - ts > _SENT_TTL]
+    for i in stale:
+        _BOT_SENT.pop(i, None)
+
+
+def is_bot_message(message: Message) -> bool:
+    """Whether a message was sent by the bot itself (its id is in the register)."""
+    return getattr(message, "id", None) in _BOT_SENT
+
 
 async def _reply(message: Message, text: str):
     """Send a message with the bot's 🤖-prefix, the common shape of all replies."""
-    return await message.reply_text(f"🤖 {text}")
+    sent = await message.reply_text(f"🤖 {text}")
+    register_sent(sent)
+    return sent
 
 
 def _split_text(text: str) -> list[str]:
@@ -112,9 +144,12 @@ async def _send_attachment_once(client, message: Message, path, kind: str):
     """The actual Pyrogram send for one attachment. Raises on error (retried)."""
     chat_id = message.chat.id
     if kind == "photo":
-        return await client.send_photo(chat_id, str(path))
-    if kind == "video":
-        return await client.send_video(chat_id, str(path))
-    if kind == "audio":
-        return await client.send_audio(chat_id, str(path))
-    return await client.send_document(chat_id, str(path))
+        sent = await client.send_photo(chat_id, str(path))
+    elif kind == "video":
+        sent = await client.send_video(chat_id, str(path))
+    elif kind == "audio":
+        sent = await client.send_audio(chat_id, str(path))
+    else:
+        sent = await client.send_document(chat_id, str(path))
+    register_sent(sent)
+    return sent

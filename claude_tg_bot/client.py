@@ -145,7 +145,8 @@ async def main():
     #    messages (you = the bot account) come as outgoing. So filters.incoming
     #    doesn't catch them in groups → filters.all is needed.
     #  - To avoid the bot feeding back on its own answers, on_all_message ignores
-    #    outgoing reply messages (reply_to_message_id).
+    #    messages whose id is in the bot-sent register (its own replies/attachments),
+    #    while still processing the owner's genuine replies.
     # workers=1 — we process messages SEQUENTIALLY. Otherwise Pyrogram runs
     # several Claude processes in parallel; on a network failure that multiplies
     # hung processes and yields a mess of answers instead of a clear timeout.
