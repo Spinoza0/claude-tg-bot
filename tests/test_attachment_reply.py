@@ -53,7 +53,11 @@ class TestAttachmentKind(unittest.TestCase):
 
     def test_audio(self):
         self.assertEqual(_attachment_kind("a.mp3"), "audio")
-        self.assertEqual(_attachment_kind("a.ogg"), "audio")
+        self.assertEqual(_attachment_kind("a.m4a"), "audio")
+
+    def test_voice(self):
+        self.assertEqual(_attachment_kind("a.ogg"), "voice")
+        self.assertEqual(_attachment_kind("a.opus"), "voice")
 
     def test_document_fallback(self):
         self.assertEqual(_attachment_kind("a.pdf"), "document")
@@ -89,6 +93,14 @@ class TestSendAttachment(unittest.TestCase):
         path = Path("/tmp/a.mp3")
         self.assertIsNone(self._run(_send_attachment(client, self._message(), path)))
         client.send_audio.assert_awaited_once_with(123, str(path))
+
+    def test_voice_method(self):
+        client = mock.AsyncMock()
+        path = Path("/tmp/a.ogg")
+        self.assertIsNone(self._run(_send_attachment(client, self._message(), path)))
+        client.send_voice.assert_awaited_once_with(123, str(path))
+        client.send_audio.assert_not_awaited()
+        client.send_document.assert_not_awaited()
 
     def test_document_method(self):
         client = mock.AsyncMock()

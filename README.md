@@ -41,8 +41,9 @@ Telegram account  (userbot)
   result files to the working directory. Through `ATTACHMENT_SYSTEM_PROMPT` we ask
   it to save an image/video/audio/document it created into `.claude_tg_bot_attach`
   and mark it with a `[FILE: <path>]` line. The bot parses those markers, hides
-  them from the visible text and sends the files back (photo/video/audio/document
-  by extension). The files land in the same folder as downloaded attachments, so
+  them from the visible text and sends the files back
+  (photo/video/voice/audio/document by extension; `.ogg`/`.opus` go as a voice
+  message). The files land in the same folder as downloaded attachments, so
   `/clearattach` cleans them too.
 - **Replies** — when you reply to a message, the bot feeds the quoted message's
   content (its text, author and any attachments) to Claude as context, alongside
@@ -124,9 +125,9 @@ Optional:
   empty — the flag is not passed and Claude uses its own standard system prompt.
 - `ATTACHMENT_SYSTEM_PROMPT` — the attachment-marker instruction, added as a
   second `--append-system-prompt` right after `CLAUDE_SYSTEM_PROMPT`. It tells
-  Claude to save an image/video/audio/document it created into the work dir's
-  `.claude_tg_bot_attach` and mark it with a `[FILE: <path>]` line. Empty — the
-  built-in default is used (attachments are sent back). Set a custom text to
+  Claude to save an image/video/voice/audio/document it created into the work
+  dir's `.claude_tg_bot_attach` and mark it with a `[FILE: <path>]` line. Empty —
+  the built-in default is used (attachments are sent back). Set a custom text to
   change how Claude marks files (or to turn the built-in off).
 - `BOT_LANG` — the bot's message language (Telegram + console): `en` or `ru`.
   One language = one file in `claude_tg_bot/locale/`. Empty/unknown → `en`.

@@ -174,20 +174,23 @@ CLAUDE_SYSTEM_PROMPT: str = os.getenv("CLAUDE_SYSTEM_PROMPT", "").strip()
 # text to override it.
 ATTACHMENT_SYSTEM_PROMPT: str = (
     os.getenv("ATTACHMENT_SYSTEM_PROMPT", "").strip()
-    or "Attachments rule. When you finish and a result file should be sent back "
-       "to the user as an attachment (an image, video, audio or any other file, "
-       "not just code), you MUST:\n"
+    or "Attachments rule. When you finish and a result file should be delivered "
+       "to the user as an attachment (an image, video, voice, audio or any other "
+       "file, not just code), you MUST send it — never merely describe it, link "
+       "it, or give its path in the text. To do so:\n"
        "1. Save that file into the '.claude_tg_bot_attach' subfolder of the current "
-       "working directory. Never save it to /tmp, the home directory or anywhere "
-       "else outside this folder.\n"
+       "working directory (the selected project, or the sandbox root when no "
+       "project is selected). Never save it loose in the working directory, /tmp, "
+       "the home directory or anywhere else.\n"
        "2. In your FINAL answer, print the path to it as a marker line, one per "
        "file, exactly on its own line:\n"
        "[FILE: <relative-path-inside-.claude_tg_bot_attach>]\n"
        "Use the path relative to the current working directory (e.g. "
-       "'.claude_tg_bot_attach/frame.png'). Do NOT use an absolute /tmp path. "
-       "Print one such line for each file you want to send. Only files saved in "
-       "'.claude_tg_bot_attach' are sent; anything you save elsewhere is not. "
-       "If you created no file to send, print nothing."
+       "'.claude_tg_bot_attach/frame.png'). Do NOT use an absolute or ~ path. "
+       "Print one such line for each file you want to send — the marker is what "
+       "actually delivers the file, and the text can mention it only as a summary. "
+       "Only files saved in '.claude_tg_bot_attach' are sent; anything you save "
+       "elsewhere is not. If you created no file to send, print nothing."
 )
 
 # The root within which the bot may create/switch projects.
