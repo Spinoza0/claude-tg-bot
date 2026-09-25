@@ -67,14 +67,20 @@ Even "for example", a comment must not contain a real proxy host, secret,
 user_id, or user path. Only fakes: `example.example.com`, `0000...`,
 `/home/username/...`.
 
-### 5. Comments in code — only where they explain the non-obvious
-Don't write comments "just because": the code should read fine without them.
-Remove comments that restate what's visible from the code (e.g. `# save the
-value`). Keep only those that explain a non-obvious situation: why exactly this
-way, a workaround for an edge case/error, a link to external behavior (e.g.
-"Claude doesn't pick up the last session in -p by itself — we pass --continue
-explicitly"). Aim for the function/variable name to convey the meaning itself,
-with the comment being secondary.
+### 5. Comments in code — only where the meaning is genuinely non-obvious
+Do NOT add comments "just because", and do NOT restate what the code already
+shows (e.g. `# save the value`, or a comment above `AGENT_GENDER = ...` that
+merely repeats the variable name). The code should read fine on its own; a good
+name should carry the meaning and a comment should stay secondary.
+
+Add a comment ONLY when the code's intent is not clear from reading it alone:
+- *why* it is done exactly this way;
+- a workaround for an edge case / a past error / a library quirk;
+- a link to external behavior or a non-obvious constraint.
+
+Before finishing, reread every comment you wrote and DELETE the ones that
+repeat the obvious. Keep it lean — a comment you had to think about is kept,
+a redundant one is removed. When in doubt, delete it (the name explains it).
 
 ### 6. Never `git push --force` without explicit consent
 Force-push rewrites history. If needed — get explicit user approval. Prefer

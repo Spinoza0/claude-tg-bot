@@ -21,6 +21,12 @@ from .version import BOT_VERSION
 # Project root (parent of the claude_tg_bot package) — where run.sh and state.json live.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+# The home folder the bot keeps its data in, regardless of where it's launched.
+# The Telegram session (.session), user state (state.json) and config.env live
+# here, so reinstalling/upgrading (brew Cellar) or running from another cwd never
+# resets them. Mirrors the config.env priority in _find_config_env.
+DATA_DIR = Path.home() / ".claude-tg-bot"
+
 
 def _find_config_env(candidates: Optional[Iterable[Path]] = None) -> Optional[Path]:
     """Find config.env by priority.
@@ -267,10 +273,14 @@ SANDBOX_COMMAND: str = (os.getenv("SANDBOX_COMMAND", "") or "@helpbot").strip()
 # ---------------------------------------------------------------------------
 
 # File with user states (active projects etc.) — in the project root.
-STATE_FILE: Path = _PROJECT_ROOT / "state.json"
+STATE_FILE: Path = DATA_DIR / "state.json"
 
 # Bot message language (see i18n.py). Empty/unknown -> "en".
 BOT_LANG: str = (os.getenv("BOT_LANG") or "").strip()
+
+# Agent's grammatical gender ('male' | 'female'), any-case input, default 'male'.
+_AGENT_GENDER = (os.getenv("AGENT_GENDER") or "").strip().lower()
+AGENT_GENDER: str = _AGENT_GENDER if _AGENT_GENDER in {"male", "female"} else "male"
 
 
 def write_lang_to_config(lang: str) -> bool:

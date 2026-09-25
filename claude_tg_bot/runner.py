@@ -31,6 +31,10 @@ from . import config, i18n
 logger = logging.getLogger("claude_tg_bot")
 
 
+def _gender_prompt(gender: str) -> str:
+    return i18n.t(f"gender.prompt_{gender}")
+
+
 @dataclass
 class ClaudeResult:
     text: str = ""
@@ -83,6 +87,9 @@ def _build_command(
     # --append-system-prompt flags). Only present when set.
     if config.ATTACHMENT_SYSTEM_PROMPT:
         cmd += ["--append-system-prompt", config.ATTACHMENT_SYSTEM_PROMPT]
+    # A model-facing gender hint so Claude writes "from itself" in the right form.
+    if config.AGENT_GENDER:
+        cmd += ["--append-system-prompt", _gender_prompt(config.AGENT_GENDER)]
     cmd += [
         "--output-format", "stream-json",
         "--verbose",
