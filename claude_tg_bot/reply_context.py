@@ -36,23 +36,9 @@ QUOTE_TEXT_MAX_LEN = 4000
 class ReplyContext:
     """The quoted context to feed Claude alongside the user's own text."""
 
-    text_block: str = ""      # the ready prompt block (author + type + text + paths)
+    text_block: str = ""      # the ready prompt block (type + text + paths)
     image_paths: list = field(default_factory=list)  # downloaded quoted attachments
     has_reply: bool = False   # True when there was a reply_to_message
-
-
-def _author_label(message: Message) -> str:
-    """A human label for the quoted message's author (name, else @username, else id)."""
-    u = message.from_user
-    if u is not None:
-        name = (u.first_name or "") + (" " + u.last_name if u.last_name else "")
-        name = name.strip()
-        if name:
-            return name
-        if u.username:
-            return f"@{u.username}"
-        return str(u.id)
-    return str(message.chat.id if message.chat else "?")
 
 
 def _type_kind(message: Message) -> Optional[str]:
@@ -157,8 +143,7 @@ async def collect_reply_context(message: Message, cwd: Path) -> ReplyContext:
         else:
             path_mark = ""
 
-        label = _author_label(msg)
-        headline = f"[{kind or 'message'}] by {label}"
+        headline = f"[{kind or 'message'}]"
         detail = f": {body}" if body else ""
         parts.append(f"{headline}{detail}{path_mark}")
 

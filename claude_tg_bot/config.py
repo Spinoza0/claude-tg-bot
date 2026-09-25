@@ -12,6 +12,7 @@ RuntimeError stating where config.env should be).
 """
 
 import os
+import sys
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -318,7 +319,7 @@ def set_config_value(key: str, value: str) -> bool:
     BOT_LANG) is refreshed so the change takes effect on the fly, and it's
     written to config.env so it survives a restart.
     """
-    setattr(globals(), key, value)
+    setattr(sys.modules[__name__], key, value)
     return write_config_value(key, value)
 
 
