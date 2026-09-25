@@ -101,7 +101,8 @@ if { [ "$KEEP_AWAKE" = "true" ] || [ "$KEEP_AWAKE" = "1" ] || [ "$KEEP_AWAKE" = 
     echo "$(lib_msg run.sh.keep_awake_empty)" 1>&2
     exit 1
 fi
-echo "$(lib_msg run.sh.launching)"
+BOT_VERSION="$("$VENV/bin/python" -c 'import claude_tg_bot; print(claude_tg_bot.__version__)' 2>/dev/null || true)"
+echo "$(lib_msg run.sh.launching)" | sed "s|{ver}|$BOT_VERSION|"
 # "$@" below — pass through the call arguments (e.g. --log=info) into python -m.
 # We run via $VENV/bin/python (we didn't activate the venv in setup_env).
 # The keep-awake command is word-split so "caffeinate -dimsu" becomes argv.

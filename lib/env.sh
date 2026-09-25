@@ -102,7 +102,6 @@ setup_env() {
         echo "$(lib_msg env.sh.no_python_hint) $0"
         exit 1
     fi
-    echo "$(lib_msg env.sh.python)" | sed "s|{py}|$PYTHON|; s|{ver}|$("$PYTHON" -c 'import sys; print(".".join(map(str,sys.version_info[:3])))')|"
 
     # Recreate the venv if it was built with an older Python.
     if [ -d "$VENV" ] && ! venv_ok; then
