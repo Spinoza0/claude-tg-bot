@@ -196,15 +196,15 @@ bumped `main` does not automatically get a tag/release on every merge.
 
 Knowledge that saved a lot of debugging time. Don't repeat these mistakes.
 
-### Library — Kurigram (dev branch), NOT the official Pyrogram
+### Library — Kurigram, NOT the official Pyrogram
 
-- The package is **kurigram**, installed from the dev branch:
-  `kurigram @ git+https://github.com/kurigram-org/kurigram.git@dev`
+- The package is **kurigram**, installed from the `main` branch:
+  `kurigram @ git+https://github.com/kurigram-org/kurigram.git@main`
 - Requires **Python >=3.10** (the venv is currently on **3.13**). Won't install on 3.9.
 - Internally it's called `pyrogram` — imports stay `from pyrogram import ...`.
 - **Do NOT install the wheel `kurigram>=2.2.25`**: the release has **no** native
   MTProto-proxy support (only `tg://socks`). Native `tg://proxy?...secret=ee`
-  (FakeTLS, SNI) — **only in the dev branch**. Check:
+  (FakeTLS, SNI) — **only in the `main` branch**. Check:
   `from pyrogram.connection.proxy import MTProxy`.
 
 ### MTProto proxy — no mtproxy-bridge
