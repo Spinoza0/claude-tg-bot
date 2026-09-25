@@ -46,8 +46,8 @@ Telegram-аккаунт  (userbot)
 ```bash
 cd claude-tg-bot
 
-bash setup.sh          # настройка: спросит параметры и создаст config.env
-bash claude-tg-bot.sh  # запуск бота (сам создаст venv и поставит зависимости)
+./claude-tg-bot-setup.sh  # настройка: спросит параметры и создаст config.env
+./claude-tg-bot.sh        # запуск бота (сам создаст venv и поставит зависимости)
 ```
 
 `setup.sh` — интерактивная настройка: спрашивает параметры по группам
@@ -165,7 +165,7 @@ ALLOWED_CHAT_IDS="-1001234567890,-1009876543210"   # несколько — в �
 ## Запуск
 
 ```bash
-bash claude-tg-bot.sh    # из директории проекта
+./claude-tg-bot.sh    # из директории проекта
 ```
 
 Скрипт сам создаёт `.venv`, ставит зависимости (если их нет), проверяет
@@ -178,9 +178,9 @@ bash claude-tg-bot.sh    # из директории проекта
 выключено; без значения — только ошибки):
 
 ```bash
-bash claude-tg-bot.sh --log          # только ERROR
-bash claude-tg-bot.sh --log=info     # INFO + ошибки (запуск, команды, id сессии)
-bash claude-tg-bot.sh --log=debug    # всё, включая отладочное
+./claude-tg-bot.sh --log          # только ERROR
+./claude-tg-bot.sh --log=info     # INFO + ошибки (запуск, команды, id сессии)
+./claude-tg-bot.sh --log=debug    # всё, включая отладочное
 ```
 
 Логи пишутся в `~/.claude-tg-bot/logs/claude-tg-bot-<дата>.log`. При

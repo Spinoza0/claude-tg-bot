@@ -53,11 +53,11 @@ up Python and installing dependencies if needed:
 ```bash
 cd claude-tg-bot
 
-bash setup.sh          # setup: prompt for parameters and create config.env
-bash claude-tg-bot.sh  # launch the bot (creates venv and installs dependencies itself)
+./claude-tg-bot-setup.sh  # setup: prompt for parameters and create config.env
+./claude-tg-bot.sh        # launch the bot (creates venv and installs dependencies itself)
 ```
 
-`setup.sh` — interactive setup: it asks parameters by groups (mandatory and
+`claude-tg-bot-setup.sh` — interactive setup: it asks parameters by groups (mandatory and
 optional) and creates `~/.claude-tg-bot/config.env`. If the file already exists
 it edits it (makes a `config.env.bak` copy and shows the current values;
 Enter — keep, a new value — replace).
@@ -176,7 +176,7 @@ ALLOWED_CHAT_IDS="-1001234567890,-1009876543210"   # several — in one pair of 
 ## Launch
 
 ```bash
-bash claude-tg-bot.sh    # from the project directory
+./claude-tg-bot.sh    # from the project directory
 ```
 
 The script creates `.venv`, installs the dependencies (if absent), checks
@@ -188,9 +188,9 @@ so sleep doesn't drop the network and the bot keeps receiving/answering messages
 without a value — only errors):
 
 ```bash
-bash claude-tg-bot.sh --log          # only ERROR
-bash claude-tg-bot.sh --log=info     # INFO + errors (launch, commands, session id)
-bash claude-tg-bot.sh --log=debug    # everything, incl. debug
+./claude-tg-bot.sh --log          # only ERROR
+./claude-tg-bot.sh --log=info     # INFO + errors (launch, commands, session id)
+./claude-tg-bot.sh --log=debug    # everything, incl. debug
 ```
 
 Logs are written to `~/.claude-tg-bot/logs/claude-tg-bot-<date>.log`. On an

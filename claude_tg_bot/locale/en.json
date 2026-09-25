@@ -110,7 +110,7 @@
   "setup.not_saved": "   Nothing saved. Re-run setup.sh and fill them in.",
   "setup.result": "\n--- Result: {path}",
   "setup.done1": "\nDone. Next:",
-  "setup.done2": "  1. Run: bash claude-tg-bot.sh",
+  "setup.done2": "  1. Run: ./claude-tg-bot",
   "setup.done3": "  2. On first login the MTProto client will ask for a confirmation code from Telegram.",
 
   "log.found_old": "⚠️ Old logs found ({n} file(s) in {path}).",

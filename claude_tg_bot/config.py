@@ -5,7 +5,7 @@ variables (the config.env file). This keeps secrets out of the code. The file is
 looked up in two places (by priority):
 
   1. ~/.claude-tg-bot/config.env        — the folder that holds the sandbox;
-  2. <claude-tg-bot.sh folder>/config.env  — next to the launch script.
+  2. <claude-tg-bot folder>/config.env  — next to the launch script.
 
 If the file is found in neither, the bot exits (see validate(): it raises a
 RuntimeError stating where config.env should be).
@@ -26,13 +26,13 @@ def _find_config_env(candidates: Optional[Iterable[Path]] = None) -> Optional[Pa
     """Find config.env by priority.
 
     First ~/.claude-tg-bot/config.env (the folder holding the sandbox), then
-    <claude-tg-bot.sh folder>/config.env. If neither — return None (the bot then
+    <claude-tg-bot folder>/config.env. If neither — return None (the bot then
     exits; see validate()).
     """
     if candidates is None:
         candidates = [
             Path.home() / ".claude-tg-bot" / "config.env",  # sandbox folder
-            _PROJECT_ROOT / "config.env",                    # claude-tg-bot.sh folder
+            _PROJECT_ROOT / "config.env",                    # claude-tg-bot folder
         ]
     for p in candidates:
         if p.is_file():
@@ -237,11 +237,11 @@ DELETE_MODE: str = (os.getenv("DELETE_MODE", "trash").strip().lower() or "trash"
 #   true  — keep the system awake (otherwise the network drops on sleep and the
 #           bot stops receiving/answering messages).
 #   false — change nothing. Default off (the user decides).
-#   In claude-tg-bot.sh it's read as a config.env environment variable.
+#   In claude-tg-bot it's read as a config.env environment variable.
 KEEP_AWAKE: bool = _env_bool("KEEP_AWAKE", False)
 
 # KEEP_AWAKE_COMMAND — the command run to keep the system awake (command + args,
-# space-separated). Used by claude-tg-bot.sh when KEEP_AWAKE is true; default
+# space-separated). Used by claude-tg-bot when KEEP_AWAKE is true; default
 # "caffeinate -dimsu". Only the flag value is documented here — the actual
 # command is read from config.env by the launch script.
 KEEP_AWAKE_COMMAND: str = os.getenv("KEEP_AWAKE_COMMAND", "caffeinate -dimsu").strip()

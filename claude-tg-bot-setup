@@ -1,6 +1,6 @@
 #!/bin/bash
 # ================================================================
-# setup.sh — interactive setup for claude-tg-bot.
+# claude-tg-bot-setup — interactive setup for claude-tg-bot.
 #
 # Asks for settings by groups and creates/edits config.env in
 # ~/.claude-tg-bot/. If the file already exists — makes a config.env.bak
@@ -11,7 +11,7 @@
 # module lib/env.sh.
 #
 # Usage:
-#   bash setup.sh
+#   ./claude-tg-bot-setup
 # ================================================================
 set -euo pipefail
 
@@ -19,7 +19,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
 # --- 0. Prepare the environment (Python + venv + deps) ----------------------
-# Same as in claude-tg-bot.sh — via the shared module lib/env.sh.
+# Same as in claude-tg-bot — via the shared module lib/env.sh.
 source "$DIR/lib/env.sh"
 setup_env
 
