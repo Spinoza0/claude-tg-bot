@@ -1,5 +1,6 @@
 """Sending bot messages: unified format + retries on transient Telegram errors."""
 
+import re
 import time
 from pathlib import Path
 
@@ -42,8 +43,32 @@ def is_bot_message(message: Message) -> bool:
     return getattr(message, "id", None) in _BOT_SENT
 
 
-async def _reply(message: Message, text: str):
+# Working directory of the current Claude run (a project or a sandbox project).
+# When a send helper gets `cwd`, it hides the absolute path of that working dir
+# when it appears in a message: a path like ~/.../sandbox/helper/.claude_tg_bot_attach/a.ogg
+# is shown as /.claude_tg_bot_attach/a.ogg (the project name is hidden too), so
+# the user's home path never leaks into replies. `/status`/`/help` are NOT
+# masked — they keep the full path as before.
+
+
+def _mask_cwd(text: str, cwd: str) -> str:
+    """Hide the working dir prefix in paths, showing them relative to it.
+
+    Replaces "<cwd>/" with "/" so a path under the working dir is shown from the
+    dir itself: ~/.../sandbox/helper/.claude_tg_bot_attach/a.ogg ->
+    /.claude_tg_bot_attach/a.ogg. The exact `cwd` value (e.g. the active path in
+    /status) is matched only with a trailing "/", so it is not turned into "".
+    """
+    prefix = cwd + "/"
+    if cwd and prefix in text:
+        return re.sub(re.escape(prefix), "/", text)
+    return text
+
+
+async def _reply(message: Message, text: str, cwd: str = ""):
     """Send a message with the bot's 🤖-prefix, the common shape of all replies."""
+    if cwd:
+        text = _mask_cwd(text, cwd)
     sent = await message.reply_text(f"🤖 {text}")
     register_sent(sent)
     return sent
@@ -67,17 +92,17 @@ def _split_text(text: str) -> list[str]:
     return chunks
 
 
-async def _send_split(message: Message, text: str, attempts: int | None = None, delay: float | None = None):
+async def _send_split(message: Message, text: str, attempts: int | None = None, delay: float | None = None, cwd: str = ""):
     """Send text, splitting into several messages when it exceeds Telegram's limit.
 
     Used when Claude's answer is longer than the Telegram limit: instead of
     truncating, the full text is delivered in chunks.
     """
     for chunk in _split_text(text):
-        await _send_with_retry(message, chunk, attempts, delay)
+        await _send_with_retry(message, chunk, attempts, delay, cwd)
 
 
-async def _send_with_retry(message: Message, text: str, attempts: int | None = None, delay: float | None = None):
+async def _send_with_retry(message: Message, text: str, attempts: int | None = None, delay: float | None = None, cwd: str = ""):
     """Send a reply, retrying on transient Telegram errors.
 
     Telegram sometimes answers with a data-center internal error
@@ -88,7 +113,7 @@ async def _send_with_retry(message: Message, text: str, attempts: int | None = N
     rest of the handling is not broken.
     """
     return await _run_with_retry(
-        lambda: _reply(message, text),
+        lambda: _reply(message, text, cwd),
         limit=attempts if attempts is not None else config.MESSAGE_RETRY_LIMIT,
         base_delay=delay if delay is not None else config.MESSAGE_RETRY_DELAY,
         # Sending is a transient error, so the pause stays constant (multiplier 1)

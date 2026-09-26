@@ -2,7 +2,36 @@
 
 import unittest
 
-from claude_tg_bot.reply import _split_text
+from claude_tg_bot.reply import _split_text, _mask_cwd
+
+
+class TestMaskCwd(unittest.TestCase):
+    """_mask_cwd hides the working-dir prefix, keeping paths relative to it."""
+
+    CWD = "/Users/ivan/.claude-tg-bot/sandbox/helper"
+
+    def test_file_path_hidden_to_relative(self):
+        text = "Save ok: /Users/ivan/.claude-tg-bot/sandbox/helper/.claude_tg_bot_attach/a.ogg"
+        self.assertEqual(
+            _mask_cwd(text, self.CWD),
+            "Save ok: /.claude_tg_bot_attach/a.ogg",
+        )
+
+    def test_double_slash_avoided_on_consecutive(self):
+        # "<cwd>/X" -> "/X": no leading double slash.
+        self.assertEqual(_mask_cwd(f"{self.CWD}/x/../y", self.CWD), "/x/../y")
+
+    def test_other_roots_untouched(self):
+        out = _mask_cwd("root is /Users/ivan/.claude-tg-bot/sandbox", self.CWD)
+        self.assertIn("/Users/ivan/.claude-tg-bot/sandbox", out)
+
+    def test_no_match_passthrough(self):
+        text = "no path here"
+        self.assertEqual(_mask_cwd(text, self.CWD), text)
+
+    def test_empty_cwd_noop(self):
+        text = f"a {self.CWD}/x b"
+        self.assertEqual(_mask_cwd(text, ""), text)
 
 
 class TestSplitText(unittest.TestCase):

@@ -253,9 +253,10 @@ async def _clear_attach(message, active: str, sandbox: bool = False, root: str =
         await _reply(
             message,
             i18n.t("cmd.clear_attach_done", count=count, size=free, where=where, path=attach_dir),
+            cwd=active,
         )
     else:
-        await _reply(message, i18n.t("cmd.clear_attach_empty_done", path=attach_dir))
+        await _reply(message, i18n.t("cmd.clear_attach_empty_done", path=attach_dir), cwd=active)
 
 
 async def _attach_size(message, active: str, root: str = ""):
@@ -277,4 +278,5 @@ async def _attach_size(message, active: str, root: str = ""):
     await _reply(
         message,
         i18n.t("cmd.attach_size", count=count, size=_fmt_bytes(size), path=attach_dir),
+        cwd=active,
     )
