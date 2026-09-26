@@ -396,7 +396,6 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
                     _delete_path(Path(p))
                 except Exception:
                     pass
-            # Tidy up the empty attachments subfolder if it became empty.
             try:
                 attach_dir = project / ".claude_tg_bot_attach"
                 if attach_dir.exists() and not any(attach_dir.iterdir()):
