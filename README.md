@@ -120,14 +120,16 @@ Optional:
   launching Claude. Default `bypassPermissions` (full auto, otherwise Claude asks
   "What do you allow?" and hangs). Can be changed to `acceptEdits` (auto for file
   edits) for caution.
-- `CLAUDE_SYSTEM_PROMPT` — the system prompt for Claude, passed via
-  `--append-system-prompt`. If set — it's appended to every Claude call; if
-  empty — the flag is not passed and Claude uses its own standard system prompt.
-- `ATTACHMENT_SYSTEM_PROMPT` — the attachment-marker instruction, added as a
-  second `--append-system-prompt` right after `CLAUDE_SYSTEM_PROMPT`. It tells
-  Claude to save an image/video/voice/audio/document it created into the work
-  dir's `.claude_tg_bot_attach` and mark it with a `[FILE: <path>]` line. Empty —
-  the built-in default is used (attachments are sent back). Set a custom text to
+- `CLAUDE_SYSTEM_PROMPT` — the system prompt for Claude. It is merged (with the
+  attachment rule and the gender hint) into a single `--append-system-prompt`. If
+  set — it's appended to every Claude call; if empty — the flag is not passed and
+  Claude uses its own standard system prompt.
+- `ATTACHMENT_SYSTEM_PROMPT` — the attachment-marker instruction, merged into the
+  same single `--append-system-prompt` (the CLI keeps only the last such flag and
+  drops earlier ones, so all of them must travel in one). It tells Claude to save
+  an image/video/voice/audio/document it created into the work dir's
+  `.claude_tg_bot_attach` and mark it with a `[FILE: <path>]` line. Empty — the
+  built-in default is used (attachments are sent back). Set a custom text to
   change how Claude marks files (or to turn the built-in off).
 - `BOT_LANG` — the bot's message language (Telegram + console): `en` or `ru`.
   One language = one file in `claude_tg_bot/locale/`. Empty/unknown → `en`.

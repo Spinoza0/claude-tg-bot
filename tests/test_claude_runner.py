@@ -43,9 +43,15 @@ class TestBuildCommand(unittest.TestCase):
 
     def test_system_prompt_added_when_set(self):
         cmd = _build_command("prompt", Path("/tmp"), None)
-        if config.CLAUDE_SYSTEM_PROMPT:
-            self.assertIn("--append-system-prompt", cmd)
-            self.assertIn(config.CLAUDE_SYSTEM_PROMPT, cmd)
+        if config.CLAUDE_SYSTEM_PROMPT or config.ATTACHMENT_SYSTEM_PROMPT or config.AGENT_GENDER:
+            # All system prompts are merged into ONE append flag — the CLI keeps
+            # only the last --append-system-prompt and drops the earlier ones.
+            self.assertEqual(cmd.count("--append-system-prompt"), 1)
+            joined = cmd[cmd.index("--append-system-prompt") + 1]
+            if config.CLAUDE_SYSTEM_PROMPT:
+                self.assertIn(config.CLAUDE_SYSTEM_PROMPT, joined)
+            if config.ATTACHMENT_SYSTEM_PROMPT:
+                self.assertIn(config.ATTACHMENT_SYSTEM_PROMPT, joined)
         else:
             self.assertNotIn("--append-system-prompt", cmd)
 

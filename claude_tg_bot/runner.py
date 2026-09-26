@@ -80,16 +80,18 @@ def _build_command(
     # without editing code.
     if config.CLAUDE_PERMISSION_MODE:
         cmd += ["--permission-mode", config.CLAUDE_PERMISSION_MODE]
-    if config.CLAUDE_SYSTEM_PROMPT:
-        cmd += ["--append-system-prompt", config.CLAUDE_SYSTEM_PROMPT]
-    # The attachment-marker instruction — a separate system prompt added after
-    # CLAUDE_SYSTEM_PROMPT so both reach the model (Claude concatenates repeated
-    # --append-system-prompt flags). Only present when set.
-    if config.ATTACHMENT_SYSTEM_PROMPT:
-        cmd += ["--append-system-prompt", config.ATTACHMENT_SYSTEM_PROMPT]
-    # A model-facing gender hint so Claude writes "from itself" in the right form.
-    if config.AGENT_GENDER:
-        cmd += ["--append-system-prompt", _gender_prompt(config.AGENT_GENDER)]
+    # Only ONE --append-system-prompt is allowed: the CLI keeps the LAST one and
+    # drops the earlier ones, so several separate flags would silently lose every
+    # prompt but the final (e.g. the attachment rule when the gender hint follows).
+    # Merge all of them into a single string instead.
+    system_parts = [
+        config.CLAUDE_SYSTEM_PROMPT,
+        config.ATTACHMENT_SYSTEM_PROMPT,
+        _gender_prompt(config.AGENT_GENDER) if config.AGENT_GENDER else "",
+    ]
+    joined = "\n\n".join(p for p in system_parts if p)
+    if joined:
+        cmd += ["--append-system-prompt", joined]
     cmd += [
         "--output-format", "stream-json",
         "--verbose",
