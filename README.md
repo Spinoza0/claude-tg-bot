@@ -273,9 +273,8 @@ invoked from any chat.
 
 Just like the regular mode, the sandbox **requires a chosen project**: if none
 is selected, the bot answers `No active project.` and asks you to `/new` or
-`/switch` one. It never falls back to working directly in the sandbox root, so
-result files stay inside a concrete project's `.claude_tg_bot_attach` (and
-`/clearattach` can find them).
+`/switch` one. Result files stay inside a concrete project's
+`.claude_tg_bot_attach`, so `/clearattach` can find them.
 
 Everything else works the same as described above — the same commands
 (`/status`, `/list`, `/new foo`, `/switch foo`, `/clearattach`, `/attachsize`) and
