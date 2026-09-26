@@ -264,9 +264,11 @@ ALLOWED_CHAT_IDS="123456789,-1234567890"
 ### Attachments in replies (marker prompt)
 
 - `ATTACHMENT_SYSTEM_PROMPT` (config) is a **technical instruction for the model**,
-  NOT a user-facing string. It is added as a second `--append-system-prompt`
-  right after `CLAUDE_SYSTEM_PROMPT` in `runner._build_command`, and does **not**
-  live in `locale/` (no `en`/`ru` keys) — it stays one English default.
+  NOT a user-facing string. It is merged (along with `CLAUDE_SYSTEM_PROMPT` and the
+  gender hint) into a **single** `--append-system-prompt` in `runner._build_command`,
+  and does **not** live in `locale/` (no `en`/`ru` keys) — it stays one default. The
+  CLI keeps only the LAST `--append-system-prompt` and drops earlier ones, so
+  several separate flags would silently lose every prompt but the final.
 - Claude marks a file to send back with a `[FILE: <path>]` line; the bot parses it
   in `runner.extract_file_markers`, sends the file via `reply._send_attachment`
   (photo/video/voice/audio/document by extension; `.ogg`/`.opus` are sent as a
