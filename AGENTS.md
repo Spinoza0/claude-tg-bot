@@ -198,6 +198,38 @@ bumped `main` does not automatically get a tag/release on every merge.
 
 ---
 
+## Testing policy
+
+**What we unit-test.** Unit tests live in `tests/` and run with the `.venv`
+interpreter (`pyrogram`/`kurigram` present there — the system `python3` lacks
+them). We cover **pure, deterministic logic** that doesn't need a live
+Telegram/shell:
+- config parsing & validation, `/config` editable keys, version;
+- command dispatch (`on_command`), message routing (`on_all_message`,
+  `on_sandbox`, `_handle_attachment`);
+- JSON output parsing (`_human_result`), attachment markers, reply context,
+  text split, path masking;
+- access control, anti-loop register, retry backoff.
+
+**Aim.** Keep the suite **green and fast** before any release (`.venv/bin/python
+-m unittest discover -s tests`). Prefer a real `.venv` run over speed — a test
+that mocks away `pyrogram` may silently pass while the real code breaks.
+
+**What we DON'T unit-test** (deliberately, no fragile mocks): the integration /
+lifecycle code that talks to the outside world — `run_claude` (subprocess +
+streams), `client.main()` (MTProto connection, handler registration, shutdown),
+`process._kill_group` / `_start_bg` (real processes, asyncio tasks), the
+**interactive terminal** `setup`, and the `__main__` entry point. These are
+verified **manually** (see the manual audit run against a real bot / a real
+shell), not by mocking subprocess/network/threading — such mocks are flaky and
+add little value.
+
+**New logic → a test.** If you add behavior, cover it with a unit test before
+the release (see Release step 3). If adding a test would require faking a
+subprocess/MTProto/terminal, leave it out and note it — that path is manual.
+
+---
+
 ## Technical notes (pitfalls)
 
 Knowledge that saved a lot of debugging time. Don't repeat these mistakes.
