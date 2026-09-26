@@ -71,7 +71,9 @@ async def on_sandbox(client, message: Message):
     has_attach = _has_any_attach(message)
 
     # Empty and no attachment — nothing to process, ignore silently.
-    if not rest.strip() and not has_attach:
+    # A reply may still carry content (the quoted message's text/attachment), so
+    # it's not empty: on_chat feeds that reply context to Claude.
+    if not rest.strip() and not has_attach and getattr(message, "reply_to_message", None) is None:
         return
 
     # The remainder starts with '/' — it's a bot command (or /clear for claude).
@@ -213,7 +215,7 @@ async def on_chat(client, message: Message, text: str, sandbox: bool = False):
 
     # /clear — full reset: first clean the downloaded attachments, then send
     # /clear to claude (it resets the session context itself). Otherwise files stay.
-    if text.split()[0].lower() == "/clear":
+    if text.strip() and text.split()[0].lower() == "/clear":
         root = config.SANDBOX_ROOT if sandbox else config.PROJECTS_ROOT
         # silent: if there's no attachments folder — go on silently to Claude.
         await _clear_attach(message, project_root, sandbox=sandbox, root=str(root), silent=True)

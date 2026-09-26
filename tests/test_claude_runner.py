@@ -9,7 +9,58 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from claude_tg_bot import config  # noqa: E402
-from claude_tg_bot.runner import _build_command  # noqa: E402
+from claude_tg_bot.runner import _build_command, _human_result  # noqa: E402
+
+
+class TestHumanResult(unittest.TestCase):
+    """Parsing Claude's stream-json output into a human-readable result."""
+
+    def test_empty_input(self):
+        res = _human_result([])
+        self.assertEqual(res.text, "")
+        self.assertEqual(res.exit_code, 0)
+
+    def test_collects_assistant_text(self):
+        lines = [
+            '{"type":"system","subtype":"init","session_id":"s1"}',
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}',
+            '{"type":"assistant","message":{"content":[{"type":"text","text":" world"}]}}',
+            '{"type":"result","result":"Hello world","session_id":"s1","is_error":0}',
+        ]
+        res = _human_result(lines)
+        self.assertEqual(res.text, "Hello\n\n world")
+        self.assertEqual(res.session_id, "s1")
+        self.assertEqual(res.exit_code, 0)
+
+    def test_tracks_tool_use_names(self):
+        lines = [
+            '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]}}',
+            '{"type":"result","result":"","is_error":0}',
+        ]
+        res = _human_result(lines)
+        self.assertIn("Bash", res.tools)
+
+    def test_users_and_non_text_blocks_ignored(self):
+        lines = [
+            '{"type":"user","message":{"content":[{"type":"text","text":"not shown"}]}}',
+            '{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"x"}]}}',
+            '{"type":"result","result":"final","is_error":0}',
+        ]
+        res = _human_result(lines)
+        # "not shown" (user tool_result) and "x" (thinking) are not added.
+        self.assertEqual(res.text, "final")
+
+    def test_error_result_sets_exit_code_and_falls_back(self):
+        lines = [
+            '{"type":"result","is_error":1}',
+        ]
+        res = _human_result(lines)
+        self.assertEqual(res.exit_code, 1)
+
+    def test_non_json_lines_skipped(self):
+        res = _human_result(["not json", "also not json", '{"type":"result","result":"ok"', "junk"])
+        # The "result":"ok" line is malformed (unclosed) so it is skipped too.
+        self.assertEqual(res.text, "")
 
 
 class TestBuildCommand(unittest.TestCase):

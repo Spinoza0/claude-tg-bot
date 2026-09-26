@@ -4,4 +4,4 @@ Kept separate from config.py so a release version can be bumped without
 touching the configuration.
 """
 
-BOT_VERSION: str = "0.9.0"
+BOT_VERSION: str = "0.9.1"
