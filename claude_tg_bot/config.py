@@ -19,13 +19,13 @@ from typing import Iterable, Optional
 from . import i18n
 from .version import BOT_VERSION
 
-# Project root (parent of the claude_tg_bot package) — where run.sh and state.json live.
+# The parent of the claude_tg_bot package — where config.env is looked up and the
+# launch script lives.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # The home folder the bot keeps its data in, regardless of where it's launched.
-# The Telegram session (.session), user state (state.json) and config.env live
-# here, so reinstalling/upgrading (brew Cellar) or running from another cwd never
-# resets them. Mirrors the config.env priority in _find_config_env.
+# The Telegram session (.session) and user state (state.json) live here, so a
+# brew upgrade or running from another cwd never resets them.
 DATA_DIR = Path.home() / ".claude-tg-bot"
 
 
@@ -81,7 +81,7 @@ API_HASH: str = os.getenv("API_HASH", "")
 # Phone number of the account the bot runs under (format +7XXXXXXXXXX)
 PHONE: str = os.getenv("PHONE", "")
 
-# MTProto client session file name (stored in .session next to the bot)
+# MTProto client session file name (the .session is stored in DATA_DIR)
 SESSION_NAME: str = os.getenv("SESSION_NAME", "claude-tg-bot")
 
 # MTProto proxy in the form tg://proxy?server=...&port=...&secret=...
@@ -276,7 +276,7 @@ SANDBOX_COMMAND: str = (os.getenv("SANDBOX_COMMAND", "") or "@helpbot").strip()
 # Session state storage
 # ---------------------------------------------------------------------------
 
-# File with user states (active projects etc.) — in the project root.
+# File with user states (active projects etc.) — in DATA_DIR.
 STATE_FILE: Path = DATA_DIR / "state.json"
 
 # Bot message language (see i18n.py). Empty/unknown -> "en".

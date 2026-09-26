@@ -371,15 +371,15 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
             # several messages (by paragraph boundaries) so nothing is truncated.
             # The reply first, then remove "working": if deleting the indicator
             # hangs (MTProto-proxy failure) the reply still reaches.
-            await _send_split(message, text)
+            await _send_split(message, text, cwd=str(project))
             await _send_result_attachments(client, message, attach_paths, project)
             await _cleanup_busy()
         except FileNotFoundError as e:
             await _cleanup_busy()
-            await _send_with_retry(message, str(e))
+            await _send_with_retry(message, str(e), cwd=str(project))
         except ValueError as e:
             await _cleanup_busy()
-            await _send_with_retry(message, str(e))
+            await _send_with_retry(message, str(e), cwd=str(project))
         except asyncio.CancelledError:
             # The task was cancelled (command /kill) — remove "Thinking..." and propagate.
             await _cleanup_busy()
@@ -396,7 +396,6 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
                     _delete_path(Path(p))
                 except Exception:
                     pass
-            # Tidy up the empty attachments subfolder if it became empty.
             try:
                 attach_dir = project / ".claude_tg_bot_attach"
                 if attach_dir.exists() and not any(attach_dir.iterdir()):
@@ -432,20 +431,23 @@ async def _send_result_attachments(client, message: Message, paths, project: Pat
     For each raw path from the marker we resolve it safely, check existence and
     send it with the right method. On a problem (missing/outside the dir/too big)
     we inform the user but keep going with the rest. If a path is missing we note
-    it and continue.
+    it and continue. Paths in the status messages are masked to the working dir.
     """
+    cwd = str(project)
     for raw in paths:
         path = _resolve_attachment_path(project, raw)
         if not path:
             await _send_with_retry(
                 message,
                 i18n.t("handlers.attachment_invalid_path", path=raw),
+                cwd=cwd,
             )
             continue
         if not path.is_file():
             await _send_with_retry(
                 message,
                 i18n.t("handlers.attachment_missing", path=str(path)),
+                cwd=cwd,
             )
             continue
         err = await _send_attachment(client, message, path)
@@ -453,6 +455,7 @@ async def _send_result_attachments(client, message: Message, paths, project: Pat
             await _send_with_retry(
                 message,
                 i18n.t("handlers.attachment_error", path=str(path), e=err),
+                cwd=cwd,
             )
 
 
