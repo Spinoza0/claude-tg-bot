@@ -15,6 +15,72 @@ from claude_tg_bot.sessions import (  # noqa: E402
     has_session,
     is_safe_project_name,
 )
+from claude_tg_bot import handlers as _handlers_mod  # noqa: E402
+
+# Snapshot the original on_chat/on_command at import time: another test in the
+# suite rewrites handlers.on_chat without restoring it, which would leak into
+# this module. Keep the pristine versions to pin back in setUp.
+_ORIG_ON_CHAT = _handlers_mod.on_chat
+_ORIG_ON_COMMAND = _handlers_mod.on_command
+
+
+class TestSandboxRequiresProject(unittest.TestCase):
+    """on_chat must require a chosen project in sandbox mode too, like the regular mode."""
+
+    def setUp(self):
+        import asyncio
+        from unittest import mock
+        from claude_tg_bot import handlers
+
+        self._asyncio = asyncio
+        self._handlers = handlers
+
+        # A bare message carrying only the sender id that _author() reads.
+        self.message = mock.Mock()
+        self.message.from_user.id = 123
+        self.message.text = "пришли первый кадр"
+        self.message.caption = None
+
+        # Swap handlers' dependencies directly (preserving the originals) so
+        # on_chat is isolated; restored in tearDown. Some other tests reassign
+        # handlers.on_chat without restoring, so we pin it back to the real one
+        # (snapshotted at import time, before any test mutated it).
+        self._saved = {
+            "store": handlers.store,
+            "_reply": handlers._reply,
+            "_start_bg": handlers._start_bg,
+            "_author": handlers._author,
+            "on_chat": handlers.on_chat,
+            "on_command": handlers.on_command,
+        }
+        handlers.on_chat = _ORIG_ON_CHAT
+        handlers.on_command = _ORIG_ON_COMMAND
+        handlers.store = mock.MagicMock()
+        handlers._reply = mock.AsyncMock()
+        handlers._start_bg = mock.MagicMock()
+        handlers._author = lambda m: 123
+        self._state = UserState(user_id=123)
+        handlers.store.get.return_value = self._state
+
+    def tearDown(self):
+        for attr, val in self._saved.items():
+            setattr(self._handlers, attr, val)
+
+    def test_sandbox_without_project_replies_and_skips_launch(self):
+        response = self._asyncio.run(
+            self._handlers.on_chat(None, self.message, "пришли первый кадр", sandbox=True)
+        )
+        self.assertIsNone(response)
+        self._handlers._reply.assert_awaited_once()
+        self._handlers._start_bg.assert_not_called()
+
+    def test_sandbox_with_project_launches(self):
+        self._state.set_active(sandbox=True, root="/sandbox/proj", name="proj")
+        self._asyncio.run(self._handlers.on_chat(None, self.message, "привет", sandbox=True))
+        self._handlers._start_bg.assert_called_once()
+        # _start_bg is swapped out, so the _run_and_reply coroutine it received is
+        # never awaited — close it to avoid an "unawaited coroutine" warning.
+        self._handlers._start_bg.call_args[0][0].close()
 
 
 class TestUserState(unittest.TestCase):

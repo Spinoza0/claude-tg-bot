@@ -264,11 +264,18 @@ attachment type isn't recognized at all — the bot replies "Can't process: <typ
 ## Running the sandbox in any chat (`@helpbot`)
 
 Prefacing a message with the sandbox trigger (default `@helpbot`, set by
-`SANDBOX_COMMAND` in `config.env`) routes it into `SANDBOX_ROOT` instead of the
-active project. Here the sender must be in `ALLOWED_USERS`, but the chat
-restriction (`ALLOWED_CHAT_IDS`) does not apply — the sandbox can be invoked
-from any chat. `@helpbot` projects are stored separately from the regular ones
-(`PROJECTS_ROOT`), and both can run in parallel without overlapping context.
+`SANDBOX_COMMAND` in `config.env`) routes it into the sandbox mode instead of the
+active regular project. The sandbox has its own project choice stored under
+`SANDBOX_ROOT`, separate from `PROJECTS_ROOT`, so both can run in parallel
+without overlapping context. Here the sender must be in `ALLOWED_USERS`, but
+the chat restriction (`ALLOWED_CHAT_IDS`) does not apply — the sandbox can be
+invoked from any chat.
+
+Just like the regular mode, the sandbox **requires a chosen project**: if none
+is selected, the bot answers `No active project.` and asks you to `/new` or
+`/switch` one. It never falls back to working directly in the sandbox root, so
+result files stay inside a concrete project's `.claude_tg_bot_attach` (and
+`/clearattach` can find them).
 
 Everything else works the same as described above — the same commands
 (`/status`, `/list`, `/new foo`, `/switch foo`, `/clearattach`, `/attachsize`) and

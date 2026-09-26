@@ -202,16 +202,14 @@ async def on_chat(client, message: Message, text: str, sandbox: bool = False):
         await _reply(message, i18n.t("handlers.no_project"))
         return
 
-    # The working directory depends on the mode:
-    #  - regular: a chosen project is required (else an error);
-    #  - @helpbot: the chosen sandbox project, else the SANDBOX_ROOT (the sandbox itself).
-    if not sandbox:
-        if not st.project_root:
-            await _reply(message, i18n.t("handlers.no_project"))
-            return
-        project_root = st.project_root
-    else:
-        project_root = st.sandbox_project_root or str(config.SANDBOX_ROOT)
+    # A chosen project (regular or sandbox) is always required — we never fall
+    # back to the projects/sandbox root as the working directory. That keeps the
+    # result files inside a concrete project's .claude_tg_bot_attach (and lets
+    # /clearattach find them) instead of landing loose in the root.
+    project_root = st.get_active_root(sandbox)
+    if not project_root:
+        await _reply(message, i18n.t("handlers.no_project"))
+        return
 
     # /clear — full reset: first clean the downloaded attachments, then send
     # /clear to claude (it resets the session context itself). Otherwise files stay.
@@ -500,14 +498,12 @@ async def _handle_attachment(
         await _reply(message, i18n.t("handlers.select_project"))
         return
 
-    # The working directory: the sandbox project (else SANDBOX_ROOT) or the regular one.
-    if sandbox:
-        project = Path(st.sandbox_project_root or config.SANDBOX_ROOT)
-    else:
-        if not st.project_root:
-            await _reply(message, i18n.t("handlers.select_project"))
-            return
-        project = Path(st.project_root)
+    # A chosen project (regular or sandbox) is always required — never the root.
+    project_root = st.get_active_root(sandbox)
+    if not project_root:
+        await _reply(message, i18n.t("handlers.select_project"))
+        return
+    project = Path(project_root)
 
     # A subfolder inside the project for temporary attachments (deleted with the file)
     attach_dir = project / ".claude_tg_bot_attach"

@@ -172,6 +172,10 @@ class TestClearAttachRouting(unittest.TestCase):
         )
 
     def test_routing(self):
+        orig = {name: getattr(handlers, name) for name in
+                ("_allowed", "_is_allowed_user", "_is_sandbox_message", "_author",
+                 "on_command", "on_chat")}
+        self.addCleanup(lambda: [setattr(handlers, k, v) for k, v in orig.items()])
         handlers._allowed = lambda uid, cid: True
         handlers._is_allowed_user = lambda uid: True
         handlers._is_sandbox_message = lambda t: False
