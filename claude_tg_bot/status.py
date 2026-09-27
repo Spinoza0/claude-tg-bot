@@ -275,25 +275,31 @@ def _draw_status(lines: list[str]) -> None:
     """Redraw the status block in place, without touching output above it.
 
     lines — the block rows: first the working state, second (if any) the last
-    error. Move up to the start of the previous block (\\033[F) and erase from
-    the cursor to the end of screen (\\033[J) — this removes the whole old block
-    (so a 1↔2 height change leaves no tail) without touching the lines above.
-    Then print the new block. \\033[2K before a line clears leftovers on wrap.
-    A carriage return (\\r) first resets the column to 0 — \\033[F moves the
-    cursor up but keeps its column, so without \\r the line would be drawn
-    offset and the previous one wouldn't be fully cleared.
+    error. Each redraw moves up to the START of the previous block (\\033[F),
+    then rewrites just those rows, clearing each line with \\033[2K and never
+    emitting \\033[J (clear-to-end-of-screen). \\033[J is what erased ordinary
+    console output printed above/around the status (issue #69); the status now
+    only touches its own rows. The cursor is returned to the last block row so
+    a following ordinary print lands in the right place.
     """
     global _STATUS_PREV_LINES
     out = sys.stdout
+    n = len(lines)
     if _STATUS_PREV_LINES:
         out.write(f"\033[{_STATUS_PREV_LINES}F")
-        out.write("\033[J")
     for i, line in enumerate(lines):
-        if i:
-            out.write("\n")
         out.write("\r\033[2K" + _fit_width(line))
+        if i < n - 1:
+            out.write("\n")
+    # If the block shrank (error cleared), clear the leftover rows below it and
+    # move the cursor back up to the last block row.
+    extra = max(0, _STATUS_PREV_LINES - n)
+    for _ in range(extra):
+        out.write("\n\r\033[2K")
+    if extra:
+        out.write(f"\033[{extra}F")
     out.flush()
-    _STATUS_PREV_LINES = len(lines)
+    _STATUS_PREV_LINES = n
 
 
 def _status_lines(err_display: str, err_ts: float, err_active: bool, work_ts: float) -> list[str]:
