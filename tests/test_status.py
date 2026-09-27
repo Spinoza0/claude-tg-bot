@@ -232,15 +232,18 @@ class TestDrawStatus(unittest.TestCase):
             sys.stdout.write = orig_write
         return "".join(buf)
 
-    def test_redraw_clears_previous_block(self):
+    def test_redraw_does_not_erase_screen(self):
+        # Issue #69: the old redraw emitted \x1b[J (clear-to-end-of-screen),
+        # which wiped ordinary console output printed above the status. The fix
+        # clears only the status rows (\x1b[2K) and never erases the screen.
         out = self._draw_sequence([
             ["\x1b[32mWorking [t1]"],
             ["\x1b[32mWorking [t2]", "\x1b[31m❌ Error: failure [t2]\x1b[0m"],
             ["\x1b[32mWorking [t3]", "\x1b[31m❌ Error: failure [t3]\x1b[0m"],
         ])
-        self.assertIn("\x1b[J", out)
-        self.assertIn("\x1b[2F", out)
-        self.assertGreaterEqual(out.count("\x1b[J"), 2)
+        self.assertNotIn("\x1b[J", out)
+        self.assertIn("\x1b[2F", out)          # moves up to the block start
+        self.assertIn("\r\x1b[2K", out)        # clears each status row in place
 
     def test_prev_lines_tracks_height(self):
         buf: list[str] = []

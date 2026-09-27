@@ -11,6 +11,12 @@ commit messages, and documentation in **English**. User-facing strings are not
 hardcoded in English — they are pulled from the locale files (see the bilingual
 note below).
 
+**GitHub issues are always written in English**, even when the reported problem
+is described in another language (e.g. non-English). If an issue is created from a
+non-English report, translate the problem description to English. No non-English
+text (including quoted snippets of bot output) should remain in an issue body —
+replace those snippets with English equivalents.
+
 Commit messages are **concise, one-line subjects** (a short imperative summary,
 no long body or multi-paragraph notes). Don't reference internal backup branches
 or temporary helper branches in a commit message.
