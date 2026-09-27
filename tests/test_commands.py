@@ -130,6 +130,27 @@ class TestOnCommand(unittest.TestCase):
         self.assertTrue(kwargs.get("show_name"))
         self.assertEqual(kwargs.get("cwd"), "/root/p1")
 
+    def test_status_hides_root_row_when_masked(self):
+        # With a selected project the root path is masked to "/", so the root row
+        # is omitted (it carries no information). The label (PROJECTS_ROOT) only
+        # appears in that row, so its absence proves the row is hidden.
+        self._run("/status")
+        text = self.reply.call_args.args[1]
+        self.assertNotIn("PROJECTS_ROOT", text)
+
+    def test_help_shows_root_row_without_project(self):
+        # No active project -> the root path stays visible, so the row is shown.
+        root = "/root"
+        st = _st(active="", name="")
+        self.store.get_or_init.return_value = st
+        self.store.get.return_value = st
+        self.store.list_projects.return_value = []
+        with patch.object(commands.config, "PROJECTS_ROOT", Path(root)), \
+             patch.object(commands.config, "SANDBOX_ROOT", Path("/sroot")):
+            asyncio.run(on_command(SimpleNamespace(), _FakeMsg("/help"), "/help", sandbox=False))
+        text = self.reply.call_args.args[1]
+        self.assertIn("PROJECTS_ROOT", text)
+
     def test_config_denied_in_sandbox(self):
         self._run("/config", sandbox=True)
         self.reply.assert_called_once()
