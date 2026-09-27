@@ -233,11 +233,18 @@ Telegram) and once the 2FA password, if enabled. After that a
 
 ## Console status
 
-In the console the bot keeps a status block: `🟢 Working` normally, or
-`❌ Error: <text>` on a failure (Telegram link or model drop). Both lines are
-visible together, each with a date and time; the `🟢`/`❌` icon is set only on the
-up-to-date state. The block redraws in place and doesn't duplicate messages
-without changes.
+In an interactive terminal the bot runs a small `curses` screen: a **status bar**
+pinned to the bottom (`🟢 Working` normally, or `❌ Error: <text>` on a failure —
+Telegram link or model drop), and the bot's info/errors scrolled in the area
+above it. The bar is redrawn in place and never erases the log output — ordinary
+messages stay in the scroll region. Because curses uses the terminal's
+alternative screen, prior terminal history (e.g. a brew log) is hidden while the
+bot runs and restored on exit.
+
+When stdout is not a TTY (piped, or `--log` in the background) the curses screen
+is disabled and the bot falls back to plain one-shot lines without an in-place
+redraw, so nothing is ever erased. Status text carries a date/time; the
+`🟢`/`❌` icon reflects only the up-to-date state.
 
 ## Commands
 

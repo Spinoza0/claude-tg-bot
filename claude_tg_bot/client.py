@@ -18,6 +18,10 @@ from .status import (
     _friendly,
     _status_loop,
     _use_color,
+    ui_active,
+    ui_close,
+    ui_init,
+    ui_log,
 )
 
 # Bot events (start/stop, commands, Claude launch, errors) — to the log file.
@@ -88,16 +92,12 @@ async def _start_with_retry(app):
                     line = f"\033[31m❌ {note}\033[0m"
                 else:
                     line = f"❌ {note}"
-                sys.stdout.write("\r" + " " * 60 + "\r" + line + "\n")
-                sys.stdout.flush()
+                ui_log(line)
                 await asyncio.sleep(pause)
             else:
                 logger.error("Could not connect to Telegram after %s attempts: %s",
                              config.RETRY_LIMIT, _friendly(str(e)))
-                sys.stdout.write(
-                    i18n.t("client.connect_fail", limit=config.RETRY_LIMIT, friendly=_friendly(str(e)))
-                )
-                sys.stdout.flush()
+                ui_log(i18n.t("client.connect_fail", limit=config.RETRY_LIMIT, friendly=_friendly(str(e))))
                 raise
 
 
@@ -128,6 +128,10 @@ async def main():
     # Second-instance guard: if the bot is already running — exit without starting.
     if not acquire_single_instance():
         return
+
+    # Interactive console: split into a scrollable log area and a pinned status
+    # bar so the status never erases ordinary output. No-op when not a tty.
+    ui_init()
 
     # Logging (issue #12): enabled by the --log[=level] flag. By default (no flag)
     # we don't write; on an interactive launch without a log but with existing
@@ -161,11 +165,11 @@ async def main():
 
     # run.sh already showed the config.env path (==> config.env). Here we print the
     # projects root and the sandbox directory in a row, so it's clear what's where.
-    print(i18n.t("client.root", path=config.PROJECTS_ROOT))
-    print(i18n.t("client.sandbox_dir", cmd=config.SANDBOX_COMMAND, path=config.SANDBOX_ROOT))
+    ui_log(i18n.t("client.root", path=config.PROJECTS_ROOT))
+    ui_log(i18n.t("client.sandbox_dir", cmd=config.SANDBOX_COMMAND, path=config.SANDBOX_ROOT))
     mt_state = i18n.t("client.mtproxy_set") if config.MT_PROXY else i18n.t("client.mtproxy_unset")
-    print(i18n.t("client.mtproxy", state=mt_state))
-    print(i18n.t("client.claude_cmd", cmd=f"{config.CLAUDE_COMMAND} {config.COMMAND_ARGS}".strip()))
+    ui_log(i18n.t("client.mtproxy", state=mt_state))
+    ui_log(i18n.t("client.claude_cmd", cmd=f"{config.CLAUDE_COMMAND} {config.COMMAND_ARGS}".strip()))
 
     # start() — connect to Telegram (incl. login). On a network failure we don't
     # crash with a traceback, but print a short message and retry with a growing
@@ -173,8 +177,8 @@ async def main():
     await _start_with_retry(app)
 
     logger.info("Bot running and working (in %s)", config.SANDBOX_ROOT)
-    print(i18n.t("client.running"))
-    print(i18n.t("client.stop_hint"))
+    ui_log(i18n.t("client.running"))
+    ui_log(i18n.t("client.stop_hint"))
 
     # Background task: keeps the console status block "Working" / "❌ Error: …".
     # Stops together with the bot.
@@ -190,8 +194,15 @@ async def main():
         status_task.cancel()
         # Newline after the last status block — otherwise the next output
         # (traceback, shell prompt) would stick to the last block line.
-        sys.stdout.write("\n" * (_STATUS_PREV_LINES + 1))
-        sys.stdout.flush()
+        if ui_active():
+            # curses was on: restore the terminal, then leave a blank line so the
+            # shell prompt doesn't stick to the last screen row.
+            ui_close()
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+        else:
+            sys.stdout.write("\n" * (_STATUS_PREV_LINES + 1))
+            sys.stdout.flush()
         # Clean shutdown: cancel the background tasks (they may be stuck on
         # claude) and silence Pyrogram. Otherwise asyncio.run can't finish the
         # event loop while those tasks are alive, and Ctrl+C "doesn't work".
