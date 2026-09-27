@@ -117,6 +117,19 @@ class TestSendAttachment(unittest.TestCase):
         self.assertIsInstance(err, str)
         self.assertTrue(err)
 
+    def test_failure_logs_real_reason(self):
+        # The exact Telegram/API reason (currently swallowed into a generic error)
+        # must be logged so a rejected file is diagnosable.
+        import claude_tg_bot.reply as rp
+        client = mock.AsyncMock()
+        client.send_voice = mock.AsyncMock(side_effect=RuntimeError("VOICE_MESSAGE_TOO_BIG"))
+        path = Path("/tmp/a.ogg")
+        with mock.patch.object(rp.config, "MESSAGE_RETRY_LIMIT", 1):
+            with self.assertLogs("claude_tg_bot", level="WARNING") as cm:
+                err = self._run(_send_attachment(client, self._message(), path))
+        self.assertIsInstance(err, str)
+        self.assertTrue(any("VOICE_MESSAGE_TOO_BIG" in m for m in cm.output))
+
 
 class TestResolveAttachmentPath(unittest.TestCase):
     def test_relative_resolves_inside(self):
