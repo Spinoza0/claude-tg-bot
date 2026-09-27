@@ -1,5 +1,6 @@
 """Sending bot messages: unified format + retries on transient Telegram errors."""
 
+import logging
 import re
 import time
 from contextvars import ContextVar
@@ -9,6 +10,8 @@ from pyrogram.types import Message
 
 from . import config, i18n
 from .retry import _run_with_retry
+
+logger = logging.getLogger("claude_tg_bot")
 
 # Telegram caps one message at 4096 chars. Keep a margin and split on paragraph
 # boundaries so we don't cut a thought mid-sentence.
@@ -205,14 +208,25 @@ async def _send_attachment(client, message: Message, path):
     attempt failed — so we map it to (success -> None, failure -> error text).
     """
     kind = _attachment_kind(str(path))
+    last_err: Exception | None = None
+
+    async def _once():
+        nonlocal last_err
+        try:
+            return await _send_attachment_once(client, message, path, kind)
+        except Exception as e:  # keep the real reason for the failure report
+            last_err = e
+            raise
+
     sent = await _run_with_retry(
-        lambda: _send_attachment_once(client, message, path, kind),
+        _once,
         limit=config.MESSAGE_RETRY_LIMIT,
         base_delay=config.MESSAGE_RETRY_DELAY,
         multiplier=1.0,
         max_delay=config.MESSAGE_RETRY_DELAY,
     )
     if sent is None:  # every attempt failed
+        logger.warning("Attachment %s (kind=%s) failed to send: %r", path, kind, last_err)
         return i18n.t("handlers.attachment_send_failed")
     return None
 

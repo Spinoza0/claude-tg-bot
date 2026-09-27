@@ -60,5 +60,25 @@ class TestFindConfigEnv(unittest.TestCase):
             config.CONFIG_ENV_PATH = saved
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestAttachmentPrompt(unittest.TestCase):
+    """The attachment-marker instruction is universal and platform-neutral."""
+
+    PROMPT = config.ATTACHMENT_SYSTEM_PROMPT
+
+    def test_covers_non_media_files(self):
+        # Not just image/video/voice — any result file (document/archive/etc).
+        for token in ("image", "video", "voice", "audio", "document", "archive", "PDF"):
+            self.assertIn(token, self.PROMPT, f"prompt should mention '{token}'")
+
+    def test_never_falls_back_to_sandbox_root(self):
+        # The working dir is always a selected project (no sandbox-root fallback).
+        self.assertNotIn("sandbox root", self.PROMPT)
+
+    def test_platform_neutral(self):
+        # No OS-specific utilities that would break on another platform.
+        for token in ("ffmpeg", "caffeinate", "ffprobe", "say", "zsh", "/usr/", "/bin/sh"):
+            self.assertNotIn(token, self.PROMPT, f"prompt must be platform-neutral, no '{token}'")
+
+    def test_relative_path_required(self):
+        self.assertIn(".claude_tg_bot_attach", self.PROMPT)
+        self.assertIn("[FILE:", self.PROMPT)
