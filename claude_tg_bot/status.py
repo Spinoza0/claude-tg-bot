@@ -128,6 +128,76 @@ def _report_run_error(text: str) -> None:
         _RUN_ERR_TS = time.time()
 
 
+def ui_active() -> bool:
+    return _CURSES_STDSCR is not None
+
+
+def ui_init() -> bool:
+    """Enable the curses two-region console if stdout is a TTY.
+
+    Returns True when curses is active. Otherwise the bot keeps plain output
+    (piped / --log in background) and the status is a no-op. Must be called from
+    the main thread before any console writing.
+    """
+    global _CURSES_STDSCR
+    if not sys.stdout.isatty() or _CURSES_STDSCR is not None:
+        return _CURSES_STDSCR is not None
+    import curses
+    try:
+        std = curses.initscr()
+        curses.noecho()
+        curses.cbreak()
+        std.keypad(True)
+        std.nodelay(True)
+        if curses.has_colors():
+            curses.start_color()
+            curses.use_default_colors()
+            curses.init_pair(1, curses.COLOR_GREEN, -1)
+            curses.init_pair(2, curses.COLOR_RED, -1)
+    except Exception:
+        # TTY exists but curses can't take over (rare) — fall back to plain.
+        try:
+            curses.endwin()
+        except Exception:
+            pass
+        return False
+    _CURSES_STDSCR = std
+    return True
+
+
+def ui_close() -> None:
+    """Restore the terminal (call on shutdown)."""
+    global _CURSES_STDSCR
+    if _CURSES_STDSCR is None:
+        return
+    import curses
+    try:
+        curses.nocbreak()
+        _CURSES_STDSCR.keypad(False)
+        curses.echo()
+        curses.endwin()
+    except Exception:
+        pass
+    _CURSES_STDSCR = None
+
+
+def ui_log(line: str) -> None:
+    """Write an ordinary (non-status) line to the console.
+
+    In curses mode it appends to the scrollable log area above the status bar
+    and repaints the bottom row so it is never erased. Outside curses it falls
+    back to a plain stderr write (no in-place redraw, so it can't be wiped).
+    """
+    global _CURSES_LOG
+    line = line.rstrip("\n")
+    if _CURSES_STDSCR is None:
+        sys.stderr.write(line + "\n")
+        sys.stderr.flush()
+        return
+    _CURSES_LOG.append(line)
+    _ui_paint()
+
+
 def _snapshot_run_error() -> tuple[str, float]:
     with _RUN_ERR_LOCK:
         return _RUN_ERR_TEXT, _RUN_ERR_TS
@@ -163,6 +233,10 @@ def _is_model_unavailable(result) -> bool:
 # only the emoji, without escape codes.
 def _use_color() -> bool:
     return sys.stdout.isatty()
+
+
+def _strip_color(s: str) -> str:
+    return _ANSI_RE.sub("", s)
 
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -265,24 +339,66 @@ def _friendly(record: str) -> str:
 # Number of lines the last status block took (for redrawing).
 _STATUS_PREV_LINES = 0
 
+# curses stdscr when running in an interactive terminal; None when stdout is not
+# a tty (piped, --log in background) — then we keep plain output and no in-place
+# redraw, so nothing is ever erased.
+_CURSES_STDSCR = None
+_CURSES_LOG = list()  # scrollable log lines shown above the status bar.
+
 
 def _stamp() -> str:
     """Timestamp for a status line (e.g. 2026-09-12 14:32:05)."""
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _draw_status(lines: list[str]) -> None:
-    """Redraw the status block in place, without touching output above it.
+def _ui_paint() -> None:
+    """Repaint the curses screen: scrollable log above, status row on the bottom.
 
-    lines — the block rows: first the working state, second (if any) the last
-    error. Each redraw moves up to the START of the previous block (\\033[F),
-    then rewrites just those rows, clearing each line with \\033[2K and never
-    emitting \\033[J (clear-to-end-of-screen). \\033[J is what erased ordinary
-    console output printed above/around the status (issue #69); the status now
-    only touches its own rows. The cursor is returned to the last block row so
-    a following ordinary print lands in the right place.
+    Only the two regions owned by curses are touched — the status row and the
+    log area. Ordinary output sits in the log region, so a status repaint never
+    erases it (the whole point of the curses approach).
     """
-    global _STATUS_PREV_LINES
+    global _CURSES_LOG
+    std = _CURSES_STDSCR
+    if std is None:
+        return
+    h, w = std.getmaxyx()
+    # Log region: rows 0..h-2, keep the newest `h-1` lines.
+    _CURSES_LOG = _CURSES_LOG[-(h - 1):]
+    for y, line in enumerate(_CURSES_LOG):
+        std.move(y, 0)
+        std.clrtoeol()
+        std.addnstr(y, 0, line[: w - 1], w - 1)
+    # Status row: bottom row, latest state, redrawn on every paint.
+    std.move(h - 1, 0)
+    std.clrtoeol()
+    std.addnstr(h - 1, 0, _status_display[: w - 1], w - 1)
+    std.refresh()
+
+
+# The current single-line status text shown on the bottom row (curses mode).
+_status_display = ""
+
+
+def _draw_status(lines: list[str]) -> None:
+    """Redraw the status in place without erasing ordinary output.
+
+    In curses mode the status is a pinned bottom row and the error/log lines go
+    to the scrollable region above, so nothing is ever wiped. Outside curses
+    (piped / --log in background) it keeps the old in-place ANSI block; there is
+    no interleaved output in that case, so the move-up/clear rewrite is safe.
+    """
+    global _STATUS_PREV_LINES, _status_display
+    if _CURSES_STDSCR is not None:
+        # First row = the working/error state (one line); the rest (wrapped error
+        # rows) are pushed into the log area so they don't collide with the bar.
+        _status_display = _strip_color(lines[0]) if lines else ""
+        if len(lines) > 1:
+            for row in lines[1:]:
+                ui_log(row)
+        _ui_paint()
+        _STATUS_PREV_LINES = 1
+        return
     out = sys.stdout
     n = len(lines)
     if _STATUS_PREV_LINES:
