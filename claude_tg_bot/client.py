@@ -88,16 +88,16 @@ async def _start_with_retry(app):
                     line = f"\033[31m❌ {note}\033[0m"
                 else:
                     line = f"❌ {note}"
-                sys.stdout.write("\r" + " " * 60 + "\r" + line + "\n")
-                sys.stdout.flush()
+                sys.stderr.write("\r" + " " * 60 + "\r" + line + "\n")
+                sys.stderr.flush()
                 await asyncio.sleep(pause)
             else:
                 logger.error("Could not connect to Telegram after %s attempts: %s",
                              config.RETRY_LIMIT, _friendly(str(e)))
-                sys.stdout.write(
+                sys.stderr.write(
                     i18n.t("client.connect_fail", limit=config.RETRY_LIMIT, friendly=_friendly(str(e)))
                 )
-                sys.stdout.flush()
+                sys.stderr.flush()
                 raise
 
 
@@ -161,11 +161,11 @@ async def main():
 
     # run.sh already showed the config.env path (==> config.env). Here we print the
     # projects root and the sandbox directory in a row, so it's clear what's where.
-    print(i18n.t("client.root", path=config.PROJECTS_ROOT))
-    print(i18n.t("client.sandbox_dir", cmd=config.SANDBOX_COMMAND, path=config.SANDBOX_ROOT))
+    print(i18n.t("client.root", path=config.PROJECTS_ROOT), file=sys.stderr)
+    print(i18n.t("client.sandbox_dir", cmd=config.SANDBOX_COMMAND, path=config.SANDBOX_ROOT), file=sys.stderr)
     mt_state = i18n.t("client.mtproxy_set") if config.MT_PROXY else i18n.t("client.mtproxy_unset")
-    print(i18n.t("client.mtproxy", state=mt_state))
-    print(i18n.t("client.claude_cmd", cmd=f"{config.CLAUDE_COMMAND} {config.COMMAND_ARGS}".strip()))
+    print(i18n.t("client.mtproxy", state=mt_state), file=sys.stderr)
+    print(i18n.t("client.claude_cmd", cmd=f"{config.CLAUDE_COMMAND} {config.COMMAND_ARGS}".strip()), file=sys.stderr)
 
     # start() — connect to Telegram (incl. login). On a network failure we don't
     # crash with a traceback, but print a short message and retry with a growing
@@ -173,8 +173,8 @@ async def main():
     await _start_with_retry(app)
 
     logger.info("Bot running and working (in %s)", config.SANDBOX_ROOT)
-    print(i18n.t("client.running"))
-    print(i18n.t("client.stop_hint"))
+    print(i18n.t("client.running"), file=sys.stderr)
+    print(i18n.t("client.stop_hint"), file=sys.stderr)
 
     # Background task: keeps the console status block "Working" / "❌ Error: …".
     # Stops together with the bot.
