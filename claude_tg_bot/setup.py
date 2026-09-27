@@ -68,7 +68,7 @@ GROUPS = [
         ("AUTO_DELETE_ATTACH", False, "false", "Auto-delete an attachment after sending to claude (true/false)"),
         ("DELETE_MODE", False, "trash", "Where to delete an attachment (trash/permanent)"),
         ("KEEP_AWAKE", False, "false", "Keep the laptop awake while the bot runs (true/false). Prevents sleep dropping the network and making the bot stop answering"),
-        ("KEEP_AWAKE_COMMAND", False, "caffeinate -dimsu", "Command + args to keep the system awake when KEEP_AWAKE is true. Empty or not on PATH — the bot runs without it"),
+        ("KEEP_AWAKE_COMMAND", False, "caffeinate -i -m", "Command + args to keep the system awake when KEEP_AWAKE is true. Empty or not on PATH — the bot runs without it"),
     ]),
 ]
 

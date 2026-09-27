@@ -45,7 +45,7 @@ def _get_bot_pids() -> list[int]:
     pids: list[int] = []
     # Match ONLY a genuine bot process whose argv starts with a python
     # interpreter and runs `python -m claude_tg_bot` (or a path to __main__.py).
-    # This excludes wrapper processes (caffeinate -dimsu python -m claude_tg_bot,
+    # This excludes wrapper processes (caffeinate -i -m python -m claude_tg_bot,
     # zsh/bash -c "...") that merely contain the substrings: their first token is
     # not python, so they are not the bot and must not be "our other instance".
     for line in out.splitlines():

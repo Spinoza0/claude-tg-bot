@@ -207,9 +207,12 @@ claude-tg-bot    # launch the bot (from PATH, after brew install — no path nee
 
 The command creates `.venv`, installs the dependencies (if absent), checks
 `config.env` and runs the bot. No manual Python launch needed. If `KEEP_AWAKE=true`
-is set in `config.env`, it keeps the machine awake using `KEEP_AWAKE_COMMAND` (a
-custom keep-awake command, e.g. `caffeinate -dimsu`), so sleep doesn't drop the
-network and the bot keeps receiving/answering messages.
+is set in `config.env`, it keeps the machine awake using `KEEP_AWAKE_COMMAND`
+(the default is `caffeinate -i -m` — a built-in value, so you don't have to type
+it; the interactive setup pre-fills it and it's also in `config.env.example`),
+so sleep doesn't drop the network and the bot keeps receiving/answering messages.
+`caffeinate -i -m` prevents idle sleep (both system and disk); note it does not
+control clamshell (lid-close) sleep, which is a separate system setting.
 
 **Logging** is enabled by the `--log[=level]` flag at launch (default off;
 without a value — only errors):

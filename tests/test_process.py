@@ -43,10 +43,10 @@ class TestGetBotPids(unittest.TestCase):
         self.assertEqual(self._scan(out), [])
 
     def test_ignores_caffeinate_wrapper(self):
-        # KEEP_AWAKE runs the bot via `caffeinate -dimsu python -m claude_tg_bot`;
+        # KEEP_AWAKE runs the bot via `caffeinate -i -m python -m claude_tg_bot`;
         # caffeinate is a wrapper (first token != python) and must NOT be mistaken
         # for the bot, or the single-instance guard fires on itself.
-        out = ("999  caffeinate -dimsu /p/.venv/bin/python -m claude_tg_bot\n")
+        out = ("999  caffeinate -i -m /p/.venv/bin/python -m claude_tg_bot\n")
         self.assertEqual(self._scan(out), [])
 
     def test_python_dash_c_with_module_matches(self):
