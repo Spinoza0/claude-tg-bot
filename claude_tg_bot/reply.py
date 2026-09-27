@@ -2,6 +2,7 @@
 
 import re
 import time
+from contextvars import ContextVar
 from pathlib import Path
 
 from pyrogram.types import Message
@@ -43,32 +44,78 @@ def is_bot_message(message: Message) -> bool:
     return getattr(message, "id", None) in _BOT_SENT
 
 
+# The active working directory for path masking, set per-message by the handlers
+# so every send (reply/attachment/error) hides this real path even when a call
+# site doesn't pass `cwd` explicitly. A ContextVar scopes it to the message being
+# handled so it never leaks into the next one.
+_active_cwd: ContextVar[str] = ContextVar("active_cwd", default="")
+
+
+def set_active_cwd(path: str) -> None:
+    """Remember the working dir to mask in all sends while handling this message."""
+    _active_cwd.set(path or "")
+
+
 # Working directory of the current Claude run (a project or a sandbox project).
-# When a send helper gets `cwd`, it hides the absolute path of that working dir
-# when it appears in a message: a path like ~/.../sandbox/helper/.claude_tg_bot_attach/a.ogg
-# is shown as /.claude_tg_bot_attach/a.ogg (the project name is hidden too), so
-# the user's home path never leaks into replies. `/status`/`/help` are NOT
-# masked — they keep the full path as before.
+# A send helper hides the absolute path of that working dir when it appears in a
+# message, so the user's home path never leaks into replies. `show_name` keeps
+# just the project's name (for /status, /help); otherwise the path is dropped to
+# "/". Both "<cwd>/..." and "<cwd>" at a fragment boundary are matched.
+def _mask_roots() -> list[str]:
+    """The broader filesystem roots also hidden in outbound messages.
 
-
-def _mask_cwd(text: str, cwd: str) -> str:
-    """Hide the working dir prefix in paths, showing them relative to it.
-
-    Replaces "<cwd>/" with "/" so a path under the working dir is shown from the
-    dir itself: ~/.../sandbox/helper/.claude_tg_bot_attach/a.ogg ->
-    /.claude_tg_bot_attach/a.ogg. The exact `cwd` value (e.g. the active path in
-    /status) is matched only with a trailing "/", so it is not turned into "".
+    Besides the active working dir, a real home/projects/sandbox root must never
+    leak: a path under one of them is shown relative to it (leading slash kept),
+    so "/home/user/projects/wb/test/file" reads as "/wb/test/file". This covers
+    paths outside the active project too.
     """
-    prefix = cwd + "/"
-    if cwd and prefix in text:
-        return re.sub(re.escape(prefix), "/", text)
+    out = []
+    for r in (config.PROJECTS_ROOT, config.SANDBOX_ROOT, Path.home()):
+        s = str(r)
+        if s and s not in out:
+            out.append(s)
+    return out
+
+
+def _mask_cwd(text: str, cwd: str, show_name: bool = False) -> str:
+    """Hide the real filesystem prefix of a path, keeping only the project.
+
+    cwd — the current working directory (a project or a sandbox project). A path
+    that starts with "cwd/" is shown from the working dir: ".../helper/.claude_tg_bot_attach/a.ogg"
+    -> "/.claude_tg_bot_attach/a.ogg"; with show_name it keeps the project name,
+    -> "/helper/.claude_tg_bot_attach/a.ogg". The exact "cwd" value is matched both
+    with a trailing "/" and at a fragment boundary (end of string, before a
+    space/./newline), so a path at the end of a line is hidden too. The broader
+    roots (projects/sandbox/home) are also replaced so no real path leaks.
+    """
+    if not cwd:
+        return text
+    root = str(cwd)
+    # The replacement for "<cwd>": "/" hides the whole path; "/<name>" keeps the
+    # project's name (for /status, /help).
+    bare = f"/{Path(root).name}" if show_name else "/"
+    # "<cwd>/X" -> "<bare>/X": a path under the working dir is shown from the dir
+    # (or from the project name when show_name is set).
+    under = bare + "/" if show_name else "/"
+    text = re.sub(re.escape(root + "/"), under, text)
+    text = re.sub(re.escape(root) + r"(?=$|[\s.\n])", bare, text)
+    # Mask the broader roots (projects/sandbox/home): show a path relative to it.
+    for r in _mask_roots():
+        if not r or r == root:
+            continue
+        text = re.sub(re.escape(r + "/"), "/", text)
+        text = re.sub(re.escape(r) + r"(?=$|[\s.\n])", "/", text)
     return text
 
 
-async def _reply(message: Message, text: str, cwd: str = ""):
+async def _reply(message: Message, text: str, cwd: str = "", show_name: bool = False):
     """Send a message with the bot's 🤖-prefix, the common shape of all replies."""
+    # If no cwd is passed, mask the active working dir of the message being
+    # handled (set via set_active_cwd) — so every send hides the real path.
+    if not cwd:
+        cwd = _active_cwd.get()
     if cwd:
-        text = _mask_cwd(text, cwd)
+        text = _mask_cwd(text, cwd, show_name)
     sent = await message.reply_text(f"🤖 {text}")
     register_sent(sent)
     return sent

@@ -30,7 +30,7 @@ from .attach import (
     _sniff_image_ext,
     _textual_attach_prompt,
 )
-from .reply import _reply, _send_attachment, _send_split, _send_with_retry, is_bot_message
+from .reply import _reply, _send_attachment, _send_split, _send_with_retry, is_bot_message, set_active_cwd
 from .runner import extract_file_markers
 from .sandbox import _is_sandbox_message, _strip_sandbox_prefix
 from .status import _is_model_unavailable, _is_run_error, _report_run_error
@@ -212,6 +212,8 @@ async def on_chat(client, message: Message, text: str, sandbox: bool = False):
     if not project_root:
         await _reply(message, i18n.t("handlers.no_project"))
         return
+    # Mask the working dir in every send made while handling this message.
+    set_active_cwd(project_root)
 
     # /clear — full reset: first clean the downloaded attachments, then send
     # /clear to claude (it resets the session context itself). Otherwise files stay.
@@ -245,6 +247,8 @@ async def _run_and_reply(client, message, st, prompt: str, image_paths, resume_s
     result.session_id.
     """
     project = Path(cwd) if cwd else Path(st.project_root)
+    # Mask this working dir in every reply/attachment sent during the run.
+    set_active_cwd(str(project))
     # If the user replied to a message — feed the quoted content (text + the
     # quoted attachments) to Claude along with the user's own text. The reply
     # context is prepended to the prompt; the quoted files are downloaded into

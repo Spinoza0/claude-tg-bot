@@ -78,6 +78,10 @@ class TestOnCommand(unittest.TestCase):
         self.reply.assert_called_once()
         text = self.reply.call_args.args[1]
         self.assertIn("hint", text)
+        # /help also masks the active project path (keeps the project name).
+        kwargs = self.reply.call_args.kwargs
+        self.assertTrue(kwargs.get("show_name"))
+        self.assertEqual(kwargs.get("cwd"), "/root/p1")
 
     def test_help_with_sandbox_mentions_mode(self):
         self._run("/help", sandbox=True)
@@ -120,6 +124,11 @@ class TestOnCommand(unittest.TestCase):
         self.reply.assert_called_once()
         text = self.reply.call_args.args[1]
         self.assertIn("sess1", text)
+        # /status shows the active project masked: the real path is hidden and
+        # only the project name is kept (show_name=True).
+        kwargs = self.reply.call_args.kwargs
+        self.assertTrue(kwargs.get("show_name"))
+        self.assertEqual(kwargs.get("cwd"), "/root/p1")
 
     def test_config_denied_in_sandbox(self):
         self._run("/config", sandbox=True)
