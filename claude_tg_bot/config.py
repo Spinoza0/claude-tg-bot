@@ -249,9 +249,10 @@ KEEP_AWAKE: bool = _env_bool("KEEP_AWAKE", False)
 
 # KEEP_AWAKE_COMMAND — the command run to keep the system awake (command + args,
 # space-separated). Used by claude-tg-bot when KEEP_AWAKE is true; default
-# "caffeinate -dimsu". Only the flag value is documented here — the actual
+# "caffeinate -i -m" (prevent idle sleep on battery too; -s is AC-only so it's
+# not part of the default). Only the flag value is documented here — the actual
 # command is read from config.env by the launch script.
-KEEP_AWAKE_COMMAND: str = os.getenv("KEEP_AWAKE_COMMAND", "caffeinate -dimsu").strip()
+KEEP_AWAKE_COMMAND: str = os.getenv("KEEP_AWAKE_COMMAND", "caffeinate -i -m").strip()
 
 
 # ---------------------------------------------------------------------------
