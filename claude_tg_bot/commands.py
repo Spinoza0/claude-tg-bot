@@ -14,7 +14,7 @@ from .sessions import find_latest_session, is_safe_project_name, store
 from .access import _author
 from .process import _active_tasks, _bot_proc_pids, kill_bot_procs
 from .attach import _delete_path, _dir_size, _fmt_bytes
-from .reply import _reply
+from .reply import _mask_cwd, _reply
 
 # Reserved slash commands handled by on_command (lowercase, without the '/').
 # Used to validate that SANDBOX_COMMAND never shadows a bot command (see setup.py).
@@ -44,7 +44,10 @@ async def on_command(client, message: Message, text: str, sandbox: bool = False)
 
     if cmd == "/start" or cmd == "/help":
         box = [i18n.t("cmd.start_hello", version=config.BOT_VERSION) + "\n"]
-        box.append(i18n.t("cmd.projects_root", label=label, root=root))
+        # The root path is masked in the reply, so print it only while it stays
+        # visible (not collapsed to "/").
+        if _mask_cwd(str(root), str(active)) != "/":
+            box.append(i18n.t("cmd.projects_root", label=label, root=root))
         if sandbox:
             box.append(i18n.t("cmd.sandbox_mode", cmd=config.SANDBOX_COMMAND, label=label))
         if not active:
@@ -100,7 +103,9 @@ async def on_command(client, message: Message, text: str, sandbox: bool = False)
         active = st.get_active_root(sandbox)
         lines = [i18n.t("cmd.status_header", version=config.BOT_VERSION,
                         name=st.active_name(sandbox) or i18n.t("cmd.name_not_selected"))]
-        lines.append(i18n.t("cmd.status_root", label=label, root=root))
+        # Hide the root row when its path is masked away (collapsed to "/").
+        if _mask_cwd(str(root), str(active)) != "/":
+            lines.append(i18n.t("cmd.status_root", label=label, root=root))
         lines.append(i18n.t("cmd.status_active", path=active or "/"))
         _sid = find_latest_session(Path(active))
         lines.append(i18n.t("cmd.status_session", sid=_sid or "(new)"))
