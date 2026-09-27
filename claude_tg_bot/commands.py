@@ -53,7 +53,7 @@ async def on_command(client, message: Message, text: str, sandbox: bool = False)
             box.append(i18n.t("cmd.current_project", name=active_name, path=active) + "\n")
         box.append("")
         box.append(format_command_hint())
-        await _reply(message, "\n".join(box))
+        await _reply(message, "\n".join(box), cwd=active, show_name=True)
 
     elif cmd == "/list":
         projects = store.list_projects(user_id, root=root)
@@ -107,7 +107,7 @@ async def on_command(client, message: Message, text: str, sandbox: bool = False)
         lines.append(
             i18n.t("cmd.status_tasks", tasks=len(_bot_proc_pids), active=len(_active_tasks))
         )
-        await _reply(message, "\n".join(lines))
+        await _reply(message, "\n".join(lines), cwd=active, show_name=True)
 
     elif cmd == "/config":
         # /config is a plain-message command only: it must NOT be reachable via
