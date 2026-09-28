@@ -181,6 +181,32 @@ def ui_close() -> None:
     _CURSES_STDSCR = None
 
 
+def ui_redirect_stdout():
+    """Context manager: silence writes to sys.stdout while curses is active.
+
+    Pyrogram (Kurigram) prints "Welcome to Pyrogram", auth prompts and error
+    messages straight to sys.stdout. In curses mode those prints land in the
+    curses frame and corrupt it (erasing lines drawn before, like the startup
+    info). While curses is active we route any sys.stdout write into the log
+    region instead, so the frame stays intact. Harmless no-op when curses is off.
+    """
+    import contextlib
+
+    if _CURSES_STDSCR is None:
+        return contextlib.nullcontext()
+
+    class _Cursor:
+        def write(self, s):
+            if s and s.strip():
+                ui_log(s.rstrip("\n"))
+        def flush(self):
+            pass
+        def isatty(self):
+            return False
+
+    return contextlib.redirect_stdout(_Cursor())
+
+
 def ui_log(line: str) -> None:
     """Write an ordinary (non-status) line to the console.
 

@@ -22,6 +22,7 @@ from .status import (
     ui_close,
     ui_init,
     ui_log,
+    ui_redirect_stdout,
 )
 
 # Bot events (start/stop, commands, Claude launch, errors) — to the log file.
@@ -145,7 +146,11 @@ async def main():
     else:
         maybe_cleanup_old_logs()
 
-    app = _build_client()
+    # Pyrogram prints "Welcome to Pyrogram" / auth prompts to sys.stdout, which
+    # corrupts the curses frame. Route those writes into the log region while we
+    # build and connect, then restore stdout for the normal curses handoff.
+    with ui_redirect_stdout():
+        app = _build_client()
 
     # Important: use filters.all, not filters.INCOMING.
     #  - In Saved Messages our own messages come as incoming, but IN A GROUP your
@@ -174,7 +179,8 @@ async def main():
     # start() — connect to Telegram (incl. login). On a network failure we don't
     # crash with a traceback, but print a short message and retry with a growing
     # pause. Ctrl+C interrupts the pause.
-    await _start_with_retry(app)
+    with ui_redirect_stdout():
+        await _start_with_retry(app)
 
     logger.info("Bot running and working (in %s)", config.SANDBOX_ROOT)
     ui_log(i18n.t("client.running"))
