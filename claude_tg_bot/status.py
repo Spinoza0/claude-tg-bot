@@ -443,6 +443,11 @@ def _drain_resize() -> None:
     import curses
     try:
         curses.resizeterm(*std.getmaxyx())
+        # curses marks the window "dirty" after a resize but refresh() won't
+        # redraw lines it thinks are unchanged, so a shrunken terminal keeps a
+        # stale blank frame. erase() flags the whole screen and forces refresh()
+        # to resend every row on the next paint.
+        std.erase()
     except curses.error:
         pass
 
