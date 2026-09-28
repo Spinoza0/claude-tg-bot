@@ -130,13 +130,11 @@ async def main():
     if not acquire_single_instance():
         return
 
-    # Interactive console: split into a scrollable log area and a pinned status
-    # bar so the status never erases ordinary output. No-op when not a tty.
-    ui_init()
-
     # Logging (issue #12): enabled by the --log[=level] flag. By default (no flag)
     # we don't write; on an interactive launch without a log but with existing
-    # logs — offer to delete the old ones.
+    # logs — offer to delete the old ones. This runs BEFORE the live console so
+    # the "delete old logs?" prompt (an interactive input) appears in the normal
+    # terminal, not inside the alt-screen region the live console owns.
     log_enabled, log_level = parse_log_flag(sys.argv)
     log_path = None
     if log_enabled:
@@ -145,6 +143,10 @@ async def main():
                     logging.getLevelName(log_level), log_path)
     else:
         maybe_cleanup_old_logs()
+
+    # Interactive console: split into a scrollable log area and a pinned status
+    # bar so the status never erases ordinary output. No-op when not a tty.
+    ui_init()
 
     # Pyrogram prints "Welcome to Pyrogram" / auth prompts to sys.stdout, which
     # corrupts the curses frame. Route those writes into the log region while we
