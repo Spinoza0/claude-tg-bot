@@ -147,7 +147,14 @@ def ui_init() -> bool:
         from rich.live import Live
 
         _CONSOLE = Console()
-        _LIVE = Live(_render_layout(), console=_CONSOLE, refresh_per_second=4)
+        # screen=True puts the log+status into the alt-screen buffer, so every
+        # refresh starts from a clean frame and a terminal resize reflows instead
+        # of leaving the previous frame overlapping (the duplication bug). The
+        # log text + pinned status are a single Text renderable, so both stay
+        # visible at any width/height.
+        _LIVE = Live(
+            _render_layout(), console=_CONSOLE, refresh_per_second=4, screen=True
+        )
         _LIVE.start()
     except Exception:
         # TTY exists but rich can't take over (rare) — fall back to plain.
