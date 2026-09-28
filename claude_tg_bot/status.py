@@ -150,10 +150,11 @@ def ui_init() -> bool:
         # screen=True puts the log+status into the alt-screen buffer, so every
         # refresh starts from a clean frame and a terminal resize reflows instead
         # of leaving the previous frame overlapping (the duplication bug). The
-        # log text + pinned status are a single Text renderable, so both stay
-        # visible at any width/height.
+        # live region is drawn as soon as lines are logged, without waiting for
+        # _status_loop: _LiveConsole re-reads the current log+status on every auto
+        # refresh (rich calls __rich_console__ each tick).
         _LIVE = Live(
-            _render_layout(), console=_CONSOLE, refresh_per_second=4, screen=True
+            _LiveConsole(), console=_CONSOLE, refresh_per_second=4, screen=True
         )
         _LIVE.start()
     except Exception:
@@ -378,6 +379,18 @@ _LOG_MAX = 200       # cap so the retained log stays bounded.
 
 # The current single-line status text shown on the bottom row (live mode).
 _status_display = ""
+
+
+class _LiveConsole:
+    """rich renderable that re-reads the live log+status on every refresh.
+
+    rich's Live auto-refreshes by calling __rich_console__ each tick; returning
+    the current layout here means the log+status update on their own as lines
+    are logged, without _status_loop having to call _ui_paint.
+    """
+
+    def __rich_console__(self, console, options):
+        yield _render_layout()
 
 
 def _render_layout() -> "object":
