@@ -129,45 +129,45 @@ def _report_run_error(text: str) -> None:
 
 
 def ui_active() -> bool:
-    return _LIVE is not None
+    return _APP is not None
 
 
 def ui_init() -> bool:
-    """Enable the rich live console (log + pinned status) if stdout is a TTY.
+    """Enable the textual console and run it on the MAIN thread (must be a TTY).
 
-    Returns True when the live console is active. Otherwise the bot keeps plain
-    output (piped / --log in background) and the status region is inactive.
-    Must be called from the main thread before any console writing.
+    textual's App.run() installs SIGTSTP/SIGCONT/SIGTTOU/SIGTTIN handlers, which
+    Python only allows on the main thread — so the TUI owns the main thread and
+    the whole asyncio bot runs on a worker thread. This blocks until the app is
+    exited. Returns True when the live console is active; if stdout is not a TTY
+    (piped / --log in background) it stays plain (False) and never blocks.
     """
-    global _CONSOLE, _LIVE
-    if not sys.stdout.isatty() or _LIVE is not None:
-        return _LIVE is not None
+    global _APP
+    if not sys.stdout.isatty() or _APP is not None:
+        return _APP is not None
     try:
-        from rich.console import Console
-        from rich.live import Live
-
-        _CONSOLE = Console()
-        _LIVE = Live(_render_layout(), console=_CONSOLE, refresh_per_second=4)
-        _LIVE.start()
+        _APP = _StatusApp()
     except Exception:
-        # TTY exists but rich can't take over (rare) — fall back to plain.
-        _CONSOLE = None
-        _LIVE = None
+        _APP = None
+        return False
+    try:
+        # Blocks the main thread until the TUI exits (Ctrl+C / bot shutdown).
+        _APP._run()
+    except Exception:
+        _APP = None
         return False
     return True
 
 
 def ui_close() -> None:
-    """Restore the terminal (call on shutdown)."""
-    global _CONSOLE, _LIVE
-    if _LIVE is None:
+    """Exit the TUI (restores the terminal). Called from the bot thread on shutdown."""
+    global _APP
+    if _APP is None:
         return
     try:
-        _LIVE.stop()
+        _APP.exit()
     except Exception:
         pass
-    _CONSOLE = None
-    _LIVE = None
+    _APP = None
 
 
 def ui_redirect_stdout():
@@ -181,7 +181,7 @@ def ui_redirect_stdout():
     """
     import contextlib
 
-    if _LIVE is None:
+    if _APP is None:
         return contextlib.nullcontext()
 
     class _Cursor:
@@ -199,15 +199,14 @@ def ui_redirect_stdout():
 def ui_log(line: str) -> None:
     """Write an ordinary (non-status) line to the console.
 
-    In live mode it appends to the scrollable log region (redrawn by _status_loop
-    on its next pass — ui_log may be called from a Pyrogram thread, so it only
-    appends under a lock and never touches the Live renderer). Outside live mode
-    it falls back to a plain stderr write (no in-place redraw, so it can't be
-    wiped).
+    In live mode it appends to the scrollable log region — textual repaints it
+    on its own. ui_log may be called from a Pyrogram thread, so it goes through
+    call_from_thread (contributoral textual API). Outside live mode it falls back
+    to a plain stderr write (no in-place redraw, so it can't be wiped).
     """
     global _LOG
     line = line.rstrip("\n")
-    if _LIVE is None:
+    if _APP is None:
         sys.stderr.write(line + "\n")
         sys.stderr.flush()
         return
@@ -217,6 +216,12 @@ def ui_log(line: str) -> None:
         _LOG.append(line)
         if len(_LOG) > _LOG_MAX:
             del _LOG[: len(_LOG) - _LOG_MAX]
+    try:
+        _APP.push_log_line(line)
+    except Exception:
+        # If the UI thread isn't up yet (startup), the line is in _LOG anyway and
+        # will be shown on mount; ignore a transient error so we don't crash.
+        pass
 
 
 def _snapshot_run_error() -> tuple[str, float]:
@@ -360,52 +365,73 @@ def _friendly(record: str) -> str:
 # Number of lines the last status block took for the plain (non-live) redraw.
 _STATUS_PREV_LINES = 0
 
-# rich Live console when running in an interactive terminal; None when stdout is
-# not a tty (piped, --log in background) — then we keep plain output and no live
+# Textual app when running in an interactive terminal; None when stdout is not a
+# tty (piped, --log in background) — then we keep plain output and no live
 # region, so nothing is ever redrawn in place.
-_CONSOLE = None
-_LIVE = None
-_LOG = list()        # scrollable log lines shown above the status bar.
+_APP = None            # _StatusApp instance (textual), None when not tty.
+_LOG = list()          # scrollable log lines shown above the status bar.
 _LOCK = threading.Lock()  # guards _LOG (ui_log can be called from any thread).
-_LOG_MAX = 200       # cap so the retained log stays bounded.
+_LOG_MAX = 200         # cap so the retained log stays bounded.
 
 # The current single-line status text shown on the bottom row (live mode).
 _status_display = ""
 
 
-def _render_layout() -> "object":
-    """Build the rich renderable: the newest log lines followed by the status.
+class _StatusApp:
+    """Minimal textual app: a scrollable log on top, a pinned status at the bottom.
 
-    We pass only the newest log lines that fit above the status so the log
-    scrolls to the newest entries; older lines fall off the top as it grows.
-    Status always sits right after the log text. rich reflows on a resize, so
-    no manual getmaxyx/resizeterm juggling is needed.
+    textual owns the terminal (its own event loop in a worker thread) and handles
+    a resize itself — the log reflows and the status stays at the bottom, so a
+    resize never blanks or duplicates text the way a hand-rolled curses/rich
+    region did. The bot updates it from any thread via call_from_thread.
     """
-    from rich.text import Text
 
-    with _LOCK:
-        lines = _LOG[:]
-    # Keep the newest lines visible (status takes the row right after them). An
-    # oversized log scrolls: newest on screen, oldest dropped from the top.
-    height = None
-    if _CONSOLE is not None:
-        try:
-            height = _CONSOLE.height
-        except Exception:
-            height = None
-    log_region = max(1, (height - 1) if height else len(lines))
-    lines = lines[-log_region:]
-    return Text("\n".join(lines + [_status_display]))
+    def __init__(self):
+        from textual.containers import Vertical
+        from textual.widgets import RichLog, Static
 
+        # textual requires UI mutations on its event loop. We run the app in a
+        # worker thread; on mount we flush anything logged before textual was ready,
+        # and thereafter the bot pushes lines/status straight to the widgets.
+        def make_app(bind):
+            from textual.app import App, ComposeResult
 
-def _ui_paint() -> None:
-    """Refresh the live console (log + pinned status) in place."""
-    if _LIVE is None:
-        return
-    try:
-        _LIVE.update(_render_layout())
-    except Exception:
-        pass
+            class _Inner(App):
+                def compose(self) -> ComposeResult:
+                    with Vertical():
+                        yield RichLog(id="log", highlight=False, markup=False)
+                        yield Static(id="status", markup=False)
+
+                def on_mount(self) -> None:
+                    for line in list(bind["log"]):
+                        self.query_one("#log", RichLog).write(line)
+                    self.query_one("#status", Static).update(bind["status"])
+
+            return _Inner()
+
+        bind = {"log": _LOG, "status": _status_display}
+        self._app = make_app(bind)
+        self._rich_log = RichLog
+        self._static = Static
+
+    def _run(self) -> None:
+        # textual App.run() blocks; it runs in a dedicated worker thread.
+        self._app.run()
+
+    def _append(self, line: str) -> None:
+        self._app.query_one("#log", self._rich_log).write(line)
+
+    def _set_status(self, s: str) -> None:
+        self._app.query_one("#status", self._static).update(s)
+
+    def push_log_line(self, line: str) -> None:
+        self._app.call_from_thread(self._append, line)
+
+    def push_status(self, s: str) -> None:
+        self._app.call_from_thread(self._set_status, s)
+
+    def exit(self) -> None:
+        self._app.call_from_thread(self._app.exit)
 
 
 def _draw_status(lines: list[str]) -> None:
@@ -417,14 +443,14 @@ def _draw_status(lines: list[str]) -> None:
     no interleaved output in that case, so the move-up/clear rewrite is safe.
     """
     global _STATUS_PREV_LINES, _status_display
-    if _LIVE is not None:
+    if _APP is not None:
         # First row = the working/error state (one line); the rest (wrapped error
         # rows) are pushed into the log area so they don't collide with the bar.
         _status_display = _strip_color(lines[0]) if lines else ""
         if len(lines) > 1:
             for row in lines[1:]:
                 ui_log(row)
-        _ui_paint()
+        _APP.push_status(_status_display)
         _STATUS_PREV_LINES = 1
         return
     out = sys.stdout
@@ -536,10 +562,6 @@ async def _status_loop(stop: asyncio.Event) -> None:
         if lines != prev:
             _draw_status(lines)
             prev = lines
-        # Always repaint the live region from the cached log + status, so a
-        # terminal resize never leaves the screen blank or stale. rich reflows on
-        # its own; this just pushes the current state (cheap, runs every ~1.5s).
-        _ui_paint()
         try:
             await asyncio.wait_for(stop.wait(), timeout=1.5)
         except asyncio.TimeoutError:

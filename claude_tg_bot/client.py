@@ -20,7 +20,6 @@ from .status import (
     _use_color,
     ui_active,
     ui_close,
-    ui_init,
     ui_log,
     ui_redirect_stdout,
 )
@@ -129,10 +128,6 @@ async def main():
     # Second-instance guard: if the bot is already running — exit without starting.
     if not acquire_single_instance():
         return
-
-    # Interactive console: split into a scrollable log area and a pinned status
-    # bar so the status never erases ordinary output. No-op when not a tty.
-    ui_init()
 
     # Logging (issue #12): enabled by the --log[=level] flag. By default (no flag)
     # we don't write; on an interactive launch without a log but with existing
