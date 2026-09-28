@@ -12,7 +12,6 @@ import asyncio
 import logging
 import re
 import shutil
-import signal
 import sys
 import threading
 import time
@@ -371,7 +370,6 @@ _STATUS_PREV_LINES = 0
 # redraw, so nothing is ever erased.
 _CURSES_STDSCR = None
 _CURSES_LOG = list()  # scrollable log lines shown above the status bar.
-_RESIZE_EVENT = None  # asyncio.Event raised by SIGWINCH (None until installed).
 
 
 def _stamp() -> str:
@@ -409,47 +407,39 @@ def _ui_paint() -> None:
     std.refresh()
 
 
-def _install_resize_handlers() -> None:
-    """Handle terminal resizes asynchronously, so they never block the loop.
-
-    Old approach polled stdscr.getch() in a busy loop from the status task. That
-    was a bug: after resizeterm() curses reverts to blocking input, getch() spins
-    and holds the event loop → 100% CPU and Ctrl+C + message handling freeze on
-    any resize. Instead we watch SIGWINCH and only flag it; the status loop
-    repaints on its next pass. No curses call happens in the signal handler.
-    """
-    global _RESIZE_EVENT
-    if _CURSES_STDSCR is None or _RESIZE_EVENT is not None:
-        return
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return
-    _RESIZE_EVENT = asyncio.Event()
-    try:
-        loop.add_signal_handler(signal.SIGWINCH, _RESIZE_EVENT.set)
-    except (NotImplementedError, RuntimeError, ValueError):
-        _RESIZE_EVENT = None
-
-
 def _drain_resize() -> None:
-    """Re-measure the terminal size if a resize happened (repaint is unconditional)."""
-    if _RESIZE_EVENT is None or not _RESIZE_EVENT.is_set():
-        return
-    _RESIZE_EVENT.clear()
+    """Re-measure the terminal size on a resize and force a full redraw.
+
+    curses delivers a resize as KEY_RESIZE through getch() (its own SIGWINCH
+    handler). We poll once with nodelay so it can't block the event loop; after a
+    resize we re-measure and erase() so the next refresh() resends every row. We
+    do NOT watch SIGWINCH via add_signal_handler — curses takes SIGWINCH for
+    itself on macOS, so the signal never reaches our handler and the frame stays
+    stale.
+    """
     std = _CURSES_STDSCR
     if std is None:
         return
     import curses
     try:
+        std.nodelay(True)  # resizeterm() can revert to blocking; keep it non-blocking
+        resized = False
+        while True:
+            ch = std.getch()
+            if ch == curses.KEY_RESIZE:
+                resized = True
+            else:
+                # ERR (-1) or a real key — no more pending resizes.
+                break
+        if not resized:
+            return
         curses.resizeterm(*std.getmaxyx())
-        # curses marks the window "dirty" after a resize but refresh() won't
-        # redraw lines it thinks are unchanged, so a shrunken terminal keeps a
-        # stale blank frame. erase() flags the whole screen and forces refresh()
-        # to resend every row on the next paint.
+        # After a resize curses won't resend rows it thinks are unchanged, so a
+        # shrunken terminal keeps a stale blank frame. erase() flags the whole
+        # screen to force refresh() to resend everything on the next paint.
         std.erase()
     except curses.error:
-        pass
+        return
 
 
 # The current single-line status text shown on the bottom row (curses mode).
@@ -551,7 +541,6 @@ async def _status_loop(stop: asyncio.Event) -> None:
     prev = None
     prev_err = None
     ok_since = 0.0
-    _install_resize_handlers()
     await asyncio.sleep(0.2)  # give pyrogram a moment to start logging
     while not stop.is_set():
         # Merge two error sources: the Telegram connection (pyrogram logs) and
