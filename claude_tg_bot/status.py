@@ -433,7 +433,7 @@ def _install_resize_handlers() -> None:
 
 
 def _drain_resize() -> None:
-    """Repaint once if a resize happened, re-measuring the terminal size."""
+    """Re-measure the terminal size if a resize happened (repaint is unconditional)."""
     if _RESIZE_EVENT is None or not _RESIZE_EVENT.is_set():
         return
     _RESIZE_EVENT.clear()
@@ -443,7 +443,6 @@ def _drain_resize() -> None:
     import curses
     try:
         curses.resizeterm(*std.getmaxyx())
-        _ui_paint()
     except curses.error:
         pass
 
@@ -582,6 +581,10 @@ async def _status_loop(stop: asyncio.Event) -> None:
             _draw_status(lines)
             prev = lines
         _drain_resize()
+        # Always repaint from the cached log + status, so a terminal resize never
+        # leaves the screen blank (curses clears it on resize). Cheap: a few
+        # addnstr; runs every ~1.5s.
+        _ui_paint()
         try:
             await asyncio.wait_for(stop.wait(), timeout=1.5)
         except asyncio.TimeoutError:
