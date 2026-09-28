@@ -145,14 +145,9 @@ def ui_init() -> bool:
     try:
         from rich.console import Console
         from rich.live import Live
-        from rich.layout import Layout
 
         _CONSOLE = Console()
-        layout = Layout()
-        layout.split_column(
-            Layout(name="log", ratio=1), Layout(name="status", size=1)
-        )
-        _LIVE = Live(layout, console=_CONSOLE, refresh_per_second=4, screen=True)
+        _LIVE = Live(_render_layout(), console=_CONSOLE, refresh_per_second=4)
         _LIVE.start()
     except Exception:
         # TTY exists but rich can't take over (rare) — fall back to plain.
@@ -379,26 +374,28 @@ _status_display = ""
 
 
 def _render_layout() -> "object":
-    """Build the rich Layout (log on top, pinned status on the bottom row).
+    """Build the rich renderable: the newest log lines followed by the status.
 
-    rich reflows the log region itself on a terminal resize, so we always pass
-    the full retained tail and let it wrap/trim to the current width — no manual
-    getmaxyx/resizeterm juggling.
+    We pass only the newest log lines that fit above the status so the log
+    scrolls to the newest entries; older lines fall off the top as it grows.
+    Status always sits right after the log text. rich reflows on a resize, so
+    no manual getmaxyx/resizeterm juggling is needed.
     """
-    from rich.layout import Layout
     from rich.text import Text
 
     with _LOCK:
         lines = _LOG[:]
-    # Keep the newest lines visible; older ones scroll off the top. The status
-    # row is reserved at the bottom (size=1), the log region takes the rest.
-    layout = Layout()
-    layout.split_column(
-        Layout(name="log", ratio=1), Layout(name="status", size=1)
-    )
-    layout["log"].update(Text("\n".join(lines)))
-    layout["status"].update(Text(_status_display))
-    return layout
+    # Keep the newest lines visible (status takes the row right after them). An
+    # oversized log scrolls: newest on screen, oldest dropped from the top.
+    height = None
+    if _CONSOLE is not None:
+        try:
+            height = _CONSOLE.height
+        except Exception:
+            height = None
+    log_region = max(1, (height - 1) if height else len(lines))
+    lines = lines[-log_region:]
+    return Text("\n".join(lines + [_status_display]))
 
 
 def _ui_paint() -> None:
