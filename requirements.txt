@@ -14,3 +14,6 @@ python-dotenv>=1.0
 
 # Deleting files into the macOS Trash (DELETE_MODE=trash)
 send2trash>=1.8
+
+# TUI for the console status region (log + pinned status; handles terminal resize)
+rich>=13.0

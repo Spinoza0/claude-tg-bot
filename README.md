@@ -233,17 +233,15 @@ Telegram) and once the 2FA password, if enabled. After that a
 
 ## Console status
 
-In an interactive terminal the bot runs a small `curses` screen: the bot's
+In an interactive terminal the bot runs a small **rich** live console: the bot's
 info/errors scroll in the upper area, and a **status line** (`🟢 Working`
 normally, or `❌ Error: <text>` on a failure — Telegram link or model drop) is
-drawn on the row right after the last log line, so it flows with the text rather
-than being pinned to the bottom of the terminal. The status is redrawn in place
-and never erases the log output. Resizing the terminal re-measures the screen and
-repaints so text isn't lost. Because curses uses the terminal's alternative
-screen, prior terminal history (e.g. a brew log) is hidden while the bot runs and
-restored on exit.
+pinned on the bottom row. The status is redrawn in place and never erases the log
+output. The live console reflows itself on a terminal resize, so text isn't lost
+or left blank. Because it uses the terminal's alternative screen, prior terminal
+history (e.g. a brew log) is hidden while the bot runs and restored on exit.
 
-When stdout is not a TTY (piped, or `--log` in the background) the curses screen
+When stdout is not a TTY (piped, or `--log` in the background) the live console
 is disabled and the bot falls back to plain one-shot lines without an in-place
 redraw, so nothing is ever erased. Status text carries a date/time; the
 `🟢`/`❌` icon reflects only the up-to-date state.
