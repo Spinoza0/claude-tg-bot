@@ -16,4 +16,4 @@ python-dotenv>=1.0
 send2trash>=1.8
 
 # TUI for the console status region (log + pinned status; handles terminal resize)
-textual>=0.60
+rich>=13.0
