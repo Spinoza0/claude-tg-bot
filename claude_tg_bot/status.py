@@ -12,6 +12,7 @@ import asyncio
 import logging
 import re
 import shutil
+import signal
 import sys
 import threading
 import time
@@ -370,6 +371,7 @@ _STATUS_PREV_LINES = 0
 # redraw, so nothing is ever erased.
 _CURSES_STDSCR = None
 _CURSES_LOG = list()  # scrollable log lines shown above the status bar.
+_RESIZE_EVENT = None  # asyncio.Event raised by SIGWINCH (None until installed).
 
 
 def _stamp() -> str:
@@ -407,28 +409,41 @@ def _ui_paint() -> None:
     std.refresh()
 
 
-def _pump_resize() -> None:
-    """Handle a terminal resize so the curses frame doesn't go blank.
+def _install_resize_handlers() -> None:
+    """Handle terminal resizes asynchronously, so they never block the loop.
 
-    curses reports a resize as KEY_RESIZE (stdscr.getch() with nodelay). If we
-    ignore it, the frame keeps drawing at the old coordinates and the text is
-    lost. Calling resizeterm() re-reads the new size; we then repaint.
+    Old approach polled stdscr.getch() in a busy loop from the status task. That
+    was a bug: after resizeterm() curses reverts to blocking input, getch() spins
+    and holds the event loop → 100% CPU and Ctrl+C + message handling freeze on
+    any resize. Instead we watch SIGWINCH and only flag it; the status loop
+    repaints on its next pass. No curses call happens in the signal handler.
     """
-    global _CURSES_STDSCR
+    global _RESIZE_EVENT
+    if _CURSES_STDSCR is None or _RESIZE_EVENT is not None:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    _RESIZE_EVENT = asyncio.Event()
+    try:
+        loop.add_signal_handler(signal.SIGWINCH, _RESIZE_EVENT.set)
+    except (NotImplementedError, RuntimeError, ValueError):
+        _RESIZE_EVENT = None
+
+
+def _drain_resize() -> None:
+    """Repaint once if a resize happened, re-measuring the terminal size."""
+    if _RESIZE_EVENT is None or not _RESIZE_EVENT.is_set():
+        return
+    _RESIZE_EVENT.clear()
     std = _CURSES_STDSCR
     if std is None:
         return
     import curses
     try:
-        while True:
-            ch = std.getch()
-            if ch == curses.KEY_RESIZE:
-                curses.resizeterm(*std.getmaxyx())
-                _ui_paint()  # repaint right away so the frame isn't left blank
-            elif ch == -1:  # no input available (nodelay)
-                break
-            else:
-                break
+        curses.resizeterm(*std.getmaxyx())
+        _ui_paint()
     except curses.error:
         pass
 
@@ -532,6 +547,7 @@ async def _status_loop(stop: asyncio.Event) -> None:
     prev = None
     prev_err = None
     ok_since = 0.0
+    _install_resize_handlers()
     await asyncio.sleep(0.2)  # give pyrogram a moment to start logging
     while not stop.is_set():
         # Merge two error sources: the Telegram connection (pyrogram logs) and
@@ -565,7 +581,7 @@ async def _status_loop(stop: asyncio.Event) -> None:
         if lines != prev:
             _draw_status(lines)
             prev = lines
-        _pump_resize()
+        _drain_resize()
         try:
             await asyncio.wait_for(stop.wait(), timeout=1.5)
         except asyncio.TimeoutError:
