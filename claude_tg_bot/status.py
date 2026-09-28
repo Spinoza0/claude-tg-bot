@@ -378,28 +378,59 @@ def _stamp() -> str:
 
 
 def _ui_paint() -> None:
-    """Repaint the curses screen: scrollable log above, status row on the bottom.
+    """Repaint the curses screen: a scrollable log with the status right after it.
 
-    Only the two regions owned by curses are touched — the status row and the
-    log area. Ordinary output sits in the log region, so a status repaint never
-    erases it (the whole point of the curses approach).
+    The status is drawn on the row immediately after the last log line, not pinned
+    to the bottom of the terminal. The log scrolls so that the newest lines stay
+    visible with the status; older lines fall off the top as the log grows.
     """
     global _CURSES_LOG
     std = _CURSES_STDSCR
     if std is None:
         return
     h, w = std.getmaxyx()
-    # Log region: rows 0..h-2, keep the newest `h-1` lines.
-    _CURSES_LOG = _CURSES_LOG[-(h - 1):]
-    for y, line in enumerate(_CURSES_LOG):
+    # The log tops out at h-1 lines, leaving one row for the status (and ANSI
+    # dama: a long log spills, so the status is always one past the last shown
+    # line — see below).
+    visible = _CURSES_LOG[-(h - 1):] if h > 1 else []
+    for y, line in enumerate(visible):
         std.move(y, 0)
         std.clrtoeol()
         std.addnstr(y, 0, line[: w - 1], w - 1)
-    # Status row: bottom row, latest state, redrawn on every paint.
-    std.move(h - 1, 0)
+    # Status: the row right after the last log line. If the log filled the screen
+    # (visible == h-1) the status sits on the last row; otherwise it's just below
+    # the log text, so the two flow together instead of the bar being glued here.
+    status_y = min(len(visible), h - 1)
+    std.move(status_y, 0)
     std.clrtoeol()
-    std.addnstr(h - 1, 0, _status_display[: w - 1], w - 1)
+    std.addnstr(status_y, 0, _status_display[: w - 1], w - 1)
     std.refresh()
+
+
+def _pump_resize() -> None:
+    """Handle a terminal resize so the curses frame doesn't go blank.
+
+    curses reports a resize as KEY_RESIZE (stdscr.getch() with nodelay). If we
+    ignore it, the frame keeps drawing at the old coordinates and the text is
+    lost. Calling resizeterm() re-reads the new size; we then repaint.
+    """
+    global _CURSES_STDSCR
+    std = _CURSES_STDSCR
+    if std is None:
+        return
+    import curses
+    try:
+        while True:
+            ch = std.getch()
+            if ch == curses.KEY_RESIZE:
+                curses.resizeterm(*std.getmaxyx())
+                _ui_paint()  # repaint right away so the frame isn't left blank
+            elif ch == -1:  # no input available (nodelay)
+                break
+            else:
+                break
+    except curses.error:
+        pass
 
 
 # The current single-line status text shown on the bottom row (curses mode).
@@ -534,6 +565,7 @@ async def _status_loop(stop: asyncio.Event) -> None:
         if lines != prev:
             _draw_status(lines)
             prev = lines
+        _pump_resize()
         try:
             await asyncio.wait_for(stop.wait(), timeout=1.5)
         except asyncio.TimeoutError:
