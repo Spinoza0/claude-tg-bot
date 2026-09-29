@@ -12,7 +12,6 @@ import asyncio
 import logging
 import re
 import shutil
-import signal
 import sys
 import threading
 import time
@@ -130,70 +129,67 @@ def _report_run_error(text: str) -> None:
 
 
 def ui_active() -> bool:
-    return _CURSES_STDSCR is not None
+    return _LIVE is not None
 
 
 def ui_init() -> bool:
-    """Enable the curses two-region console if stdout is a TTY.
+    """Enable the rich live console (log + pinned status) if stdout is a TTY.
 
-    Returns True when curses is active. Otherwise the bot keeps plain output
-    (piped / --log in background) and the status is a no-op. Must be called from
-    the main thread before any console writing.
+    Returns True when the live console is active. Otherwise the bot keeps plain
+    output (piped / --log in background) and the status region is inactive.
+    Must be called from the main thread before any console writing.
     """
-    global _CURSES_STDSCR
-    if not sys.stdout.isatty() or _CURSES_STDSCR is not None:
-        return _CURSES_STDSCR is not None
-    import curses
+    global _CONSOLE, _LIVE
+    if not sys.stdout.isatty() or _LIVE is not None:
+        return _LIVE is not None
     try:
-        std = curses.initscr()
-        curses.noecho()
-        curses.cbreak()
-        std.keypad(True)
-        std.nodelay(True)
-        if curses.has_colors():
-            curses.start_color()
-            curses.use_default_colors()
-            curses.init_pair(1, curses.COLOR_GREEN, -1)
-            curses.init_pair(2, curses.COLOR_RED, -1)
+        from rich.console import Console
+        from rich.live import Live
+
+        _CONSOLE = Console()
+        # screen=True puts the log+status into the alt-screen buffer, so every
+        # refresh starts from a clean frame and a terminal resize reflows instead
+        # of leaving the previous frame overlapping (the duplication bug). The
+        # live region is drawn as soon as lines are logged, without waiting for
+        # _status_loop: _LiveConsole re-reads the current log+status on every auto
+        # refresh (rich calls __rich_console__ each tick).
+        _LIVE = Live(
+            _LiveConsole(), console=_CONSOLE, refresh_per_second=4, screen=True
+        )
+        _LIVE.start()
     except Exception:
-        # TTY exists but curses can't take over (rare) — fall back to plain.
-        try:
-            curses.endwin()
-        except Exception:
-            pass
+        # TTY exists but rich can't take over (rare) — fall back to plain.
+        _CONSOLE = None
+        _LIVE = None
         return False
-    _CURSES_STDSCR = std
     return True
 
 
 def ui_close() -> None:
     """Restore the terminal (call on shutdown)."""
-    global _CURSES_STDSCR
-    if _CURSES_STDSCR is None:
+    global _CONSOLE, _LIVE
+    if _LIVE is None:
         return
-    import curses
     try:
-        curses.nocbreak()
-        _CURSES_STDSCR.keypad(False)
-        curses.echo()
-        curses.endwin()
+        _LIVE.stop()
     except Exception:
         pass
-    _CURSES_STDSCR = None
+    _CONSOLE = None
+    _LIVE = None
 
 
 def ui_redirect_stdout():
-    """Context manager: silence writes to sys.stdout while curses is active.
+    """Context manager: silence writes to sys.stdout while the live console is active.
 
     Pyrogram (Kurigram) prints "Welcome to Pyrogram", auth prompts and error
-    messages straight to sys.stdout. In curses mode those prints land in the
-    curses frame and corrupt it (erasing lines drawn before, like the startup
-    info). While curses is active we route any sys.stdout write into the log
-    region instead, so the frame stays intact. Harmless no-op when curses is off.
+    messages straight to sys.stdout. In the live region those prints would land
+    over the frame and corrupt it. While live is active we route any sys.stdout
+    write into the log instead, so the frame stays intact. Harmless no-op when
+    the live console is off.
     """
     import contextlib
 
-    if _CURSES_STDSCR is None:
+    if _LIVE is None:
         return contextlib.nullcontext()
 
     class _Cursor:
@@ -211,18 +207,24 @@ def ui_redirect_stdout():
 def ui_log(line: str) -> None:
     """Write an ordinary (non-status) line to the console.
 
-    In curses mode it appends to the scrollable log area above the status bar
-    and repaints the bottom row so it is never erased. Outside curses it falls
-    back to a plain stderr write (no in-place redraw, so it can't be wiped).
+    In live mode it appends to the scrollable log region (redrawn by _status_loop
+    on its next pass — ui_log may be called from a Pyrogram thread, so it only
+    appends under a lock and never touches the Live renderer). Outside live mode
+    it falls back to a plain stderr write (no in-place redraw, so it can't be
+    wiped).
     """
-    global _CURSES_LOG
+    global _LOG
     line = line.rstrip("\n")
-    if _CURSES_STDSCR is None:
+    if _LIVE is None:
         sys.stderr.write(line + "\n")
         sys.stderr.flush()
         return
-    _CURSES_LOG.append(line)
-    _ui_paint()
+    # Cap the retained log so the region never grows unbounded; keep the last N
+    # lines (the oldest scroll off the top).
+    with _LOCK:
+        _LOG.append(line)
+        if len(_LOG) > _LOG_MAX:
+            del _LOG[: len(_LOG) - _LOG_MAX]
 
 
 def _snapshot_run_error() -> tuple[str, float]:
@@ -363,109 +365,79 @@ def _friendly(record: str) -> str:
     return record.strip().strip('"')
 
 
-# Number of lines the last status block took (for redrawing).
+# Number of lines the last status block took for the plain (non-live) redraw.
 _STATUS_PREV_LINES = 0
 
-# curses stdscr when running in an interactive terminal; None when stdout is not
-# a tty (piped, --log in background) — then we keep plain output and no in-place
-# redraw, so nothing is ever erased.
-_CURSES_STDSCR = None
-_CURSES_LOG = list()  # scrollable log lines shown above the status bar.
-_RESIZE_EVENT = None  # asyncio.Event raised by SIGWINCH (None until installed).
+# rich Live console when running in an interactive terminal; None when stdout is
+# not a tty (piped, --log in background) — then we keep plain output and no live
+# region, so nothing is ever redrawn in place.
+_CONSOLE = None
+_LIVE = None
+_LOG = list()        # scrollable log lines shown above the status bar.
+_LOCK = threading.Lock()  # guards _LOG (ui_log can be called from any thread).
+_LOG_MAX = 200       # cap so the retained log stays bounded.
+
+# The current single-line status text shown on the bottom row (live mode).
+_status_display = ""
 
 
-def _stamp() -> str:
-    """Timestamp for a status line (e.g. 2026-09-12 14:32:05)."""
-    return time.strftime("%Y-%m-%d %H:%M:%S")
+class _LiveConsole:
+    """rich renderable that re-reads the live log+status on every refresh.
+
+    rich's Live auto-refreshes by calling __rich_console__ each tick; returning
+    the current layout here means the log+status update on their own as lines
+    are logged, without _status_loop having to call _ui_paint.
+    """
+
+    def __rich_console__(self, console, options):
+        yield _render_layout()
+
+
+def _render_layout() -> "object":
+    """Build the rich renderable: the newest log lines followed by the status.
+
+    We pass only the newest log lines that fit above the status so the log
+    scrolls to the newest entries; older lines fall off the top as it grows.
+    Status always sits right after the log text. rich reflows on a resize, so
+    no manual getmaxyx/resizeterm juggling is needed.
+    """
+    from rich.text import Text
+
+    with _LOCK:
+        lines = _LOG[:]
+    # Keep the newest lines visible (status takes the row right after them). An
+    # oversized log scrolls: newest on screen, oldest dropped from the top.
+    height = None
+    if _CONSOLE is not None:
+        try:
+            height = _CONSOLE.height
+        except Exception:
+            height = None
+    log_region = max(1, (height - 1) if height else len(lines))
+    lines = lines[-log_region:]
+    return Text("\n".join(lines + [_status_display]))
 
 
 def _ui_paint() -> None:
-    """Repaint the curses screen: a scrollable log with the status right after it.
-
-    The status is drawn on the row immediately after the last log line, not pinned
-    to the bottom of the terminal. The log scrolls so that the newest lines stay
-    visible with the status; older lines fall off the top as the log grows.
-    """
-    global _CURSES_LOG
-    std = _CURSES_STDSCR
-    if std is None:
-        return
-    h, w = std.getmaxyx()
-    # The log tops out at h-1 lines, leaving one row for the status (and ANSI
-    # dama: a long log spills, so the status is always one past the last shown
-    # line — see below).
-    visible = _CURSES_LOG[-(h - 1):] if h > 1 else []
-    for y, line in enumerate(visible):
-        std.move(y, 0)
-        std.clrtoeol()
-        std.addnstr(y, 0, line[: w - 1], w - 1)
-    # Status: the row right after the last log line. If the log filled the screen
-    # (visible == h-1) the status sits on the last row; otherwise it's just below
-    # the log text, so the two flow together instead of the bar being glued here.
-    status_y = min(len(visible), h - 1)
-    std.move(status_y, 0)
-    std.clrtoeol()
-    std.addnstr(status_y, 0, _status_display[: w - 1], w - 1)
-    std.refresh()
-
-
-def _install_resize_handlers() -> None:
-    """Handle terminal resizes asynchronously, so they never block the loop.
-
-    Old approach polled stdscr.getch() in a busy loop from the status task. That
-    was a bug: after resizeterm() curses reverts to blocking input, getch() spins
-    and holds the event loop → 100% CPU and Ctrl+C + message handling freeze on
-    any resize. Instead we watch SIGWINCH and only flag it; the status loop
-    repaints on its next pass. No curses call happens in the signal handler.
-    """
-    global _RESIZE_EVENT
-    if _CURSES_STDSCR is None or _RESIZE_EVENT is not None:
+    """Refresh the live console (log + pinned status) in place."""
+    if _LIVE is None:
         return
     try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return
-    _RESIZE_EVENT = asyncio.Event()
-    try:
-        loop.add_signal_handler(signal.SIGWINCH, _RESIZE_EVENT.set)
-    except (NotImplementedError, RuntimeError, ValueError):
-        _RESIZE_EVENT = None
-
-
-def _drain_resize() -> None:
-    """Re-measure the terminal size if a resize happened (repaint is unconditional)."""
-    if _RESIZE_EVENT is None or not _RESIZE_EVENT.is_set():
-        return
-    _RESIZE_EVENT.clear()
-    std = _CURSES_STDSCR
-    if std is None:
-        return
-    import curses
-    try:
-        curses.resizeterm(*std.getmaxyx())
-        # curses marks the window "dirty" after a resize but refresh() won't
-        # redraw lines it thinks are unchanged, so a shrunken terminal keeps a
-        # stale blank frame. erase() flags the whole screen and forces refresh()
-        # to resend every row on the next paint.
-        std.erase()
-    except curses.error:
+        _LIVE.update(_render_layout())
+    except Exception:
         pass
-
-
-# The current single-line status text shown on the bottom row (curses mode).
-_status_display = ""
 
 
 def _draw_status(lines: list[str]) -> None:
     """Redraw the status in place without erasing ordinary output.
 
-    In curses mode the status is a pinned bottom row and the error/log lines go
-    to the scrollable region above, so nothing is ever wiped. Outside curses
+    In live mode the status is a pinned bottom row and the error/log lines go to
+    the scrollable region above, so nothing is ever wiped. Outside live mode
     (piped / --log in background) it keeps the old in-place ANSI block; there is
     no interleaved output in that case, so the move-up/clear rewrite is safe.
     """
     global _STATUS_PREV_LINES, _status_display
-    if _CURSES_STDSCR is not None:
+    if _LIVE is not None:
         # First row = the working/error state (one line); the rest (wrapped error
         # rows) are pushed into the log area so they don't collide with the bar.
         _status_display = _strip_color(lines[0]) if lines else ""
@@ -551,7 +523,6 @@ async def _status_loop(stop: asyncio.Event) -> None:
     prev = None
     prev_err = None
     ok_since = 0.0
-    _install_resize_handlers()
     await asyncio.sleep(0.2)  # give pyrogram a moment to start logging
     while not stop.is_set():
         # Merge two error sources: the Telegram connection (pyrogram logs) and
@@ -585,10 +556,9 @@ async def _status_loop(stop: asyncio.Event) -> None:
         if lines != prev:
             _draw_status(lines)
             prev = lines
-        _drain_resize()
-        # Always repaint from the cached log + status, so a terminal resize never
-        # leaves the screen blank (curses clears it on resize). Cheap: a few
-        # addnstr; runs every ~1.5s.
+        # Always repaint the live region from the cached log + status, so a
+        # terminal resize never leaves the screen blank or stale. rich reflows on
+        # its own; this just pushes the current state (cheap, runs every ~1.5s).
         _ui_paint()
         try:
             await asyncio.wait_for(stop.wait(), timeout=1.5)

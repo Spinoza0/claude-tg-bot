@@ -12,6 +12,25 @@ from .log import log_filename, maybe_cleanup_old_logs, parse_log_flag, setup_log
 from .process import _active_tasks, acquire_single_instance
 from .retry import _retry_backoff_delay
 from .handlers import on_all_message
+
+
+def _restore_terminal() -> None:
+    """Put stdin back into the canonical (line-buffered, echoed) mode.
+
+    A previous run that was killed while curses/rich owned the terminal can leave
+    it in raw mode, which makes input() echo control chars (e.g. "y^M") and the
+    prompt look shifted. Reset only if stdin is a real tty, and never raise.
+    """
+    if not sys.stdin.isatty():
+        return
+    try:
+        import termios
+
+        attrs = termios.tcgetattr(sys.stdin.fileno())
+        attrs[3] |= termios.ICANON | termios.ECHO
+        termios.tcsetattr(sys.stdin.fileno(), termios.TCSANOW, attrs)
+    except Exception:
+        pass
 from .status import (
     _STATUS_FILTER,
     _STATUS_PREV_LINES,
@@ -126,17 +145,19 @@ async def main():
     # of silently emitting bare i18n keys.
     i18n.ensure_available()
     config.validate()
+    # A previous run (a killed curses/rich process) can leave the terminal in
+    # raw mode, so an interactive input() echoes "y^M" instead of a line. Reset
+    # the terminal to canonical mode before we ever prompt the user.
+    _restore_terminal()
     # Second-instance guard: if the bot is already running — exit without starting.
     if not acquire_single_instance():
         return
 
-    # Interactive console: split into a scrollable log area and a pinned status
-    # bar so the status never erases ordinary output. No-op when not a tty.
-    ui_init()
-
     # Logging (issue #12): enabled by the --log[=level] flag. By default (no flag)
     # we don't write; on an interactive launch without a log but with existing
-    # logs — offer to delete the old ones.
+    # logs — offer to delete the old ones. This runs BEFORE the live console so
+    # the "delete old logs?" prompt (an interactive input) appears in the normal
+    # terminal, not inside the alt-screen region the live console owns.
     log_enabled, log_level = parse_log_flag(sys.argv)
     log_path = None
     if log_enabled:
@@ -145,6 +166,10 @@ async def main():
                     logging.getLevelName(log_level), log_path)
     else:
         maybe_cleanup_old_logs()
+
+    # Interactive console: split into a scrollable log area and a pinned status
+    # bar so the status never erases ordinary output. No-op when not a tty.
+    ui_init()
 
     # Pyrogram prints "Welcome to Pyrogram" / auth prompts to sys.stdout, which
     # corrupts the curses frame. Route those writes into the log region while we

@@ -302,5 +302,39 @@ class TestDrawStatus(unittest.TestCase):
         self.assertNotIn("…", "".join(lines))
 
 
+class TestRichRender(unittest.TestCase):
+    """The live layout renders the log tail + the pinned status at any width."""
+
+    def _render(self, width: int, height: int) -> str:
+        from rich.console import Console
+
+        con = Console(width=width, height=height, record=True, file=open("/dev/null", "w"))
+        with st._LOCK:
+            saved_log = list(st._LOG)
+            st._LOG[:] = ["R1_root", "R2_sandbox", "R3_mtproxy"]
+        saved_status = st._status_display
+        st._status_display = "\033[32m🟢 Working\033[0m [2026-09-28 19:24:37]"
+        try:
+            layout = st._render_layout()
+            con.print(layout, crop=False)
+        finally:
+            with st._LOCK:
+                st._LOG[:] = saved_log
+            st._status_display = saved_status
+        return con.export_text()
+
+    def test_layout_includes_log_and_status(self):
+        out = self._render(80, 24)
+        self.assertIn("R1_root", out)
+        self.assertIn("R3_mtproxy", out)
+        self.assertIn("Work", out)  # the status row ("🟢 Working…")
+
+    def test_survives_narrow_and_wide(self):
+        for width, height in [(30, 5), (60, 10), (110, 24)]:
+            out = self._render(width, height)
+            self.assertIn("R1_root", out, f"width={width}")
+            self.assertIn("Work", out, f"width={width}")
+
+
 if __name__ == "__main__":
     unittest.main()
