@@ -15,6 +15,7 @@ from pyrogram.types import Message
 
 from . import i18n
 from .access import _author
+from .retry import download_media_with_retry
 from .attach import (
     _attach_ext,
     _attach_type_name,
@@ -66,9 +67,7 @@ async def _download_quoted_attachment(msg: Message, attach_dir: Path) -> Optiona
     if photo is not None:
         # Photo has no mime/name — download neutral, then refine by content.
         path = attach_dir / f"quote_photo_{time.time_ns()}.img"
-        try:
-            await msg.download(file_name=str(path))
-        except Exception:
+        if await download_media_with_retry(msg._client, msg, path) is not None:
             return None
         real_ext = _sniff_image_ext(path)
         if real_ext != ".img":
@@ -90,9 +89,7 @@ async def _download_quoted_attachment(msg: Message, attach_dir: Path) -> Optiona
     if ext == ".bin" and getattr(msg, "video_note", None):
         ext = ".mp4"
     path = attach_dir / f"quote_{time.time_ns()}{ext}"
-    try:
-        await msg.download(file_name=str(path))
-    except Exception:
+    if await download_media_with_retry(msg._client, msg, path) is not None:
         return None
     return path
 

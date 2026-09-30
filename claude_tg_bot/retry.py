@@ -55,3 +55,46 @@ async def _run_with_retry(
                 else:
                     await asyncio.sleep(_retry_backoff_delay(attempt))
     return None
+
+
+def reset_media_sessions(client) -> None:
+    """Drop Pyrogram's cached media sessions so they reconnect fresh.
+
+    A media session that failed to reach STARTED stays in client.media_sessions
+    as a dead session; get_session() returns it as-is, so every download then
+    times out with "Waited 15s ... is not started" until the bot restarts.
+    Clearing the cache forces Pyrogram to create a new session on the next
+    download.
+    """
+    sessions = getattr(client, "media_sessions", None)
+    if not sessions:
+        return
+    for sess in list(sessions.values()):
+        try:
+            sess.stop()
+        except Exception:
+            pass
+    sessions.clear()
+
+
+async def download_media_with_retry(client, message, path):
+    """Download message media, retrying on a transient connect failure.
+
+    On a media-session connect failure (the session timed out reaching STARTED,
+    usually a network/proxy hiccup on a lazy first download) the dead session is
+    dropped so the next attempt reconnects. Short fixed pause between attempts.
+    Returns None on success, else the last exception (for the failure message).
+    """
+    last_err = None
+    for attempt in range(1, config.MESSAGE_RETRY_LIMIT + 1):
+        try:
+            await message.download(file_name=str(path))
+            return None
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            raise
+        except Exception as e:
+            last_err = e
+            if attempt < config.MESSAGE_RETRY_LIMIT:
+                reset_media_sessions(client)
+                await asyncio.sleep(config.MESSAGE_RETRY_DELAY)
+    return last_err

@@ -152,5 +152,98 @@ class TestStartWithRetry(unittest.TestCase):
             asyncio.run(client._start_with_retry(AuthFail()))
 
 
+class _FakeSession:
+    """A media session that records stop() (drop from cache)."""
+
+    def __init__(self):
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+
+class _FakeClient:
+    def __init__(self):
+        self.media_sessions = {2: _FakeSession()}
+        self.reset_calls = 0
+
+    def _reset_media_sessions(self):
+        # duplicate of retry.reset_media_sessions logic for the assertion below
+        for sess in list(self.media_sessions.values()):
+            sess.stop()
+        self.media_sessions.clear()
+        self.reset_calls += 1
+
+
+class TestDownloadMediaWithRetry(unittest.TestCase):
+    """download_media_with_retry: retries and drops the dead media session."""
+
+    def setUp(self):
+        self._orig_sleep = retry.asyncio.sleep
+        self._orig_reset = retry.reset_media_sessions
+
+    def tearDown(self):
+        retry.asyncio.sleep = self._orig_sleep
+        retry.reset_media_sessions = self._orig_reset
+
+    def test_success_first_attempt(self):
+        async def fake_sleep(sec):
+            await self._orig_sleep(0)
+
+        retry.asyncio.sleep = fake_sleep
+        client = _FakeClient()
+
+        class Msg:
+            calls = 0
+            async def download(self, file_name):
+                Msg.calls += 1
+                return True
+
+        retry.reset_media_sessions = lambda c: c._reset_media_sessions()
+        res = asyncio.run(retry.download_media_with_retry(client, Msg(), "/tmp/x"))
+        self.assertIsNone(res)
+        self.assertEqual(Msg.calls, 1)
+        self.assertEqual(client.reset_calls, 0)
+
+    def test_retries_then_succeeds(self):
+        async def fake_sleep(sec):
+            await self._orig_sleep(0)
+
+        retry.asyncio.sleep = fake_sleep
+        client = _FakeClient()
+
+        class Msg:
+            calls = 0
+            async def download(self, file_name):
+                Msg.calls += 1
+                if Msg.calls == 1:
+                    raise ConnectionError("Waited 15s ... is not started")
+                return True
+
+        retry.reset_media_sessions = lambda c: c._reset_media_sessions()
+        res = asyncio.run(retry.download_media_with_retry(client, Msg(), "/tmp/x"))
+        self.assertIsNone(res)
+        self.assertEqual(Msg.calls, 2)
+        self.assertEqual(client.reset_calls, 1)  # dead session was dropped
+
+    def test_exhausts_and_returns_last_error(self):
+        async def fake_sleep(sec):
+            await self._orig_sleep(0)
+
+        retry.asyncio.sleep = fake_sleep
+        client = _FakeClient()
+
+        class Msg:
+            calls = 0
+            async def download(self, file_name):
+                Msg.calls += 1
+                raise ConnectionError("is not started")
+
+        retry.reset_media_sessions = lambda c: c._reset_media_sessions()
+        res = asyncio.run(retry.download_media_with_retry(client, Msg(), "/tmp/x"))
+        self.assertIsInstance(res, ConnectionError)
+        self.assertEqual(Msg.calls, config.MESSAGE_RETRY_LIMIT)
+
+
 if __name__ == "__main__":
     unittest.main()
