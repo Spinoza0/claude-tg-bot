@@ -20,7 +20,7 @@ from .runner import run_claude
 from .sessions import find_latest_session, store
 from .access import _allowed, _author, _is_allowed_user
 from .process import _active_tasks, _bot_proc_pids, _start_bg
-from .retry import _retry_backoff_delay, _run_with_retry
+from .retry import _retry_backoff_delay, _run_with_retry, download_media_with_retry
 from .commands import _clear_attach, on_command
 from .attach import (
     _delete_path,
@@ -526,10 +526,9 @@ async def _handle_attachment(
     fname = f"claude_tg_bot_{kind}_{time.time_ns()}{download_ext}"
     attach_path = attach_dir / fname
 
-    try:
-        await message.download(file_name=str(attach_path))
-    except Exception as e:
-        await _reply(message, i18n.t("handlers.download_fail", kind=kind, e=e))
+    dl_err = await download_media_with_retry(client, message, attach_path)
+    if dl_err:
+        await _reply(message, i18n.t("handlers.download_fail", kind=kind, e=dl_err))
         return
 
     if sniff_ext:
