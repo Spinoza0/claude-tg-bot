@@ -54,5 +54,26 @@ class TestConnectStallAbort(unittest.TestCase):
         self.assertTrue(status_errs, "stall not reported to the status bar")
 
 
+class _AuthApp:
+    """Stand-in Client whose start() raises an auth error (dead session)."""
+
+    async def start(self):
+        from pyrogram.errors import AuthKeyUnregistered
+
+        raise AuthKeyUnregistered("AUTH_KEY_UNREGISTERED")
+
+
+class TestConnectAuthError(unittest.TestCase):
+    def test_auth_error_not_retried_and_reported(self):
+        # A dead session must NOT be retried (auth can't be fixed by retrying).
+        # _start_with_retry raises immediately; main() shows the re-auth message.
+        with mock.patch.object(client, "_use_color", lambda: False), \
+             mock.patch.object(client, "_retry_backoff_delay",
+                               lambda attempt: (_ for _ in ()).throw(
+                                   AssertionError("auth must not be retried"))):
+            with self.assertRaises(Exception):
+                asyncio.run(client._start_with_retry(_AuthApp()))
+
+
 if __name__ == "__main__":
     unittest.main()
