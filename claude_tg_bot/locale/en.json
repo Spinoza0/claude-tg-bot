@@ -75,6 +75,7 @@
 
   "client.connect_retry": "{friendly}. Retrying in {mins} min ({attempt}/{limit})...",
   "client.connect_fail": "\n❌ Could not connect to Telegram after {limit} attempts: {friendly}\n",
+  "client.proxy_unreachable": "\n⚠ MT-Proxy {host}:{port} is unreachable. The bot may not be able to connect. Check the proxy and your network to it, then restart.\n",
   "client.root": "Projects root (PROJECTS_ROOT): {path}",
   "client.sandbox_dir": "Sandbox folder ({cmd}): {path}",
   "client.mtproxy": "MT-Proxy: {state}",

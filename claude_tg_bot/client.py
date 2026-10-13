@@ -81,6 +81,49 @@ def _build_client() -> Client:
     )
 
 
+def _proxy_host_port(proxy: str):
+    """Parse 'tg://proxy?server=H&port=N&secret=...' → (host, port) or None."""
+    from urllib.parse import parse_qs, urlparse
+
+    if not proxy:
+        return None
+    try:
+        qs = parse_qs(urlparse(proxy).query)
+        host = (qs.get("server") or qs.get("host") or [None])[0]
+        port = int((qs.get("port") or ["443"])[0])
+        return (host, port) if host else None
+    except (ValueError, TypeError):
+        return None
+
+
+async def _proxy_reachable(host: str, port: int, timeout: float = 5.0) -> bool:
+    """Quick TCP connect check to the proxy endpoint (non-blocking)."""
+    try:
+        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout)
+        writer.close()
+        await writer.wait_closed()
+        return True
+    except Exception:
+        return False
+
+
+async def _warn_if_proxy_unreachable() -> None:
+    """Short, clear diagnostics when MT_PROXY is set but its endpoint is down.
+
+    Without this, app.start() hangs silently inside Pyrogram's own retry loop on
+    an unreachable proxy, so the bot looks dead (no 'Working' status, no retry
+    line). Print one hint up front so the cause is obvious.
+    """
+    endpoint = _proxy_host_port(config.MT_PROXY)
+    if not endpoint:
+        return
+    host, port = endpoint
+    if await _proxy_reachable(host, port):
+        return
+    logger.warning("MT-Proxy %s:%s is unreachable (TCP connect failed)", host, port)
+    ui_log(i18n.t("client.proxy_unreachable", host=host, port=port))
+
+
 async def _start_with_retry(app):
     """Connect to Telegram retrying on network failure.
 
@@ -92,6 +135,10 @@ async def _start_with_retry(app):
     Ctrl+C interrupts the pause: KeyboardInterrupt/CancelledError are
     BaseException and we don't catch them, so the app closes as usual.
     """
+    # One up-front reachability hint for a configured-but-down proxy, so the
+    # user sees the cause instead of a silent hang inside app.start().
+    await _warn_if_proxy_unreachable()
+
     for attempt in range(1, config.RETRY_LIMIT + 1):
         try:
             await app.start()

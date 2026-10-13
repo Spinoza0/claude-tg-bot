@@ -75,6 +75,7 @@
 
   "client.connect_retry": "{friendly}. Повтор через {mins} мин ({attempt}/{limit})...",
   "client.connect_fail": "\n❌ Не удалось подключиться к Telegram после {limit} попыток: {friendly}\n",
+  "client.proxy_unreachable": "\n⚠ MT-прокси {host}:{port} недоступен. Бот может не подключиться. Проверьте прокси и сеть до него, затем перезапустите.\n",
   "client.root": "Корень проектов (PROJECTS_ROOT): {path}",
   "client.sandbox_dir": "Каталог песочницы ({cmd}): {path}",
   "client.mtproxy": "MT-прокси: {state}",
