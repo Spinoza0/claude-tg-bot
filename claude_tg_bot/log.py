@@ -58,6 +58,15 @@ def parse_log_flag(argv: list[str]) -> tuple[bool, int]:
     return False, logging.ERROR
 
 
+def parse_no_proxy(argv: list[str]) -> bool:
+    """Parse argv for the --no-proxy flag.
+
+    Returns True when the bot must ignore the configured MT-Proxy even if one is
+    set (a diagnostic/fallback switch — connect to Telegram directly).
+    """
+    return "--no-proxy" in argv
+
+
 def setup_logging(level: int, path: Path) -> Path:
     """Enable file logging for the bot and pyrogram loggers.
 

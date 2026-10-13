@@ -74,14 +74,16 @@
   "status.err_temp_telegram": "Временная ошибка Telegram (внутренняя/меж-DC)",
 
   "client.connect_retry": "{friendly}. Повтор через {mins} мин ({attempt}/{limit})...",
+  "client.connect_stall": "Подключение к Telegram зависло на {secs}с (прокси/сеть не отвечает). Повтор ({attempt}/{limit})...",
+  "client.connect_stall_last": "Подключение к Telegram снова и снова зависает — MT-прокси или сеть не отвечает",
   "client.connect_fail": "\n❌ Не удалось подключиться к Telegram после {limit} попыток: {friendly}\n",
-  "client.proxy_unreachable": "\n⚠ MT-прокси {host}:{port} недоступен. Бот может не подключиться. Проверьте прокси и сеть до него, затем перезапустите.\n",
   "client.root": "Корень проектов (PROJECTS_ROOT): {path}",
   "client.sandbox_dir": "Каталог песочницы ({cmd}): {path}",
   "client.mtproxy": "MT-прокси: {state}",
   "client.mtproxy_set": "задан",
   "client.mtproxy_unset": "НЕ задан (прямое подключение)",
   "client.claude_cmd": "Команда Claude: {cmd}",
+  "client.no_proxy": "⚠ MT-прокси игнорируется (--no-proxy): прямое подключение к Telegram.",
   "client.running": "✅ Бот запущен и работает. Жду сообщения в Telegram.",
   "client.stop_hint": "   Чтобы остановить — нажми Ctrl+C в этом окне (SIGINT).",
 

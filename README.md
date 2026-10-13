@@ -227,6 +227,18 @@ Logs are written to `~/.claude-tg-bot/logs/claude-tg-bot-<date>.log`. On an
 interactive launch without `--log`, but with existing logs — the bot offers to
 delete them (default — don't delete).
 
+**`--no-proxy`** forces a direct Telegram connection, ignoring the configured
+`MT_PROXY` even if it is set. It is a diagnostic / fallback switch — for example,
+when the MT-Proxy is unreachable or hangs on the handshake and you want to verify
+the bot works without it:
+
+```bash
+claude-tg-bot --no-proxy          # ignore MT_PROXY, connect directly
+claude-tg-bot --no-proxy --log    # both switches together
+```
+
+The bot logs and prints a note when the proxy is skipped.
+
 On the first login the MTProto client requests a confirmation code (arrives in
 Telegram) and once the 2FA password, if enabled. After that a
 `claude-tg-bot.session` is created — a repeat launch doesn't ask to log in.

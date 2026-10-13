@@ -221,6 +221,11 @@ RETRY_BASE_DELAY: float = float(os.getenv("RETRY_BASE_DELAY", "60"))      # sec
 RETRY_MAX_DELAY: float = float(os.getenv("RETRY_MAX_DELAY", "300"))       # sec (5 min)
 RETRY_MULTIPLIER: float = float(os.getenv("RETRY_MULTIPLIER", "2.0"))
 
+# Hard cap on how long app.start() may take. Pyrogram's FakeTLS/MTProxy handshake
+# hangs silently (no exception) when the proxy stalls mid-handshake, so without a
+# timeout the bot looks dead. After CONNECT_TIMEOUT we abort and report the cause.
+CONNECT_TIMEOUT: float = float(os.getenv("CONNECT_TIMEOUT", "40"))  # sec
+
 # Short retries for sending messages/indicators to Telegram — seconds, so the
 # reply doesn't "hang" long (these are transient inter-DC errors, not a network loss).
 MESSAGE_RETRY_LIMIT: int = int(os.getenv("MESSAGE_RETRY_LIMIT", "3"))
