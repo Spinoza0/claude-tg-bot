@@ -35,6 +35,7 @@ from .status import (
     _STATUS_FILTER,
     _STATUS_PREV_LINES,
     _friendly,
+    _report_run_error,
     _status_loop,
     _use_color,
     ui_active,
@@ -120,6 +121,7 @@ async def _start_with_retry(app):
                     ui_log(f"\033[31m❌ {note}\033[0m")
                 else:
                     ui_log(f"❌ {note}")
+                _report_run_error(note)
                 await asyncio.sleep(_retry_backoff_delay(attempt))
             else:
                 logger.error("Could not connect to Telegram after %s attempts (stalls)",
@@ -141,6 +143,7 @@ async def _start_with_retry(app):
                 else:
                     line = f"❌ {note}"
                 ui_log(line)
+                _report_run_error(note)
                 await asyncio.sleep(pause)
             else:
                 logger.error("Could not connect to Telegram after %s attempts: %s",
@@ -236,6 +239,11 @@ async def main():
     # start() — connect to Telegram (incl. login). On a network failure we don't
     # crash with a traceback, but print a short message and retry with a growing
     # pause. Ctrl+C interrupts the pause.
+    # The status loop runs DURING the connection attempts (not only after a
+    # successful connect), so the "Working"/"❌ Error" block and any diagnostic
+    # are visible on screen while the bot tries to reach Telegram — not blank.
+    stop_status = asyncio.Event()
+    status_task = asyncio.create_task(_status_loop(stop_status))
     with ui_redirect_stdout():
         try:
             await _start_with_retry(app)
@@ -243,6 +251,8 @@ async def main():
             # All retry attempts were exhausted (e.g. a dead MT-Proxy, or direct
             # connection unavailable with --no-proxy). The reason was already
             # printed by _start_with_retry; exit cleanly, not with a traceback.
+            stop_status.set()
+            status_task.cancel()
             ui_close()
             sys.stdout.write("\n")
             sys.stdout.flush()
@@ -251,11 +261,6 @@ async def main():
     logger.info("Bot running and working (in %s)", config.SANDBOX_ROOT)
     ui_log(i18n.t("client.running"))
     ui_log(i18n.t("client.stop_hint"))
-
-    # Background task: keeps the console status block "Working" / "❌ Error: …".
-    # Stops together with the bot.
-    stop_status = asyncio.Event()
-    status_task = asyncio.create_task(_status_loop(stop_status))
 
     # idle() — keep the process alive until SIGINT/SIGTERM.
     try:

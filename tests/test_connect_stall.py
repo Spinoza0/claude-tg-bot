@@ -25,6 +25,7 @@ class TestConnectStallAbort(unittest.TestCase):
         async def run():
             config.CONNECT_TIMEOUT = 1.0  # short for the test
             seen = []
+            status_errs = []
 
             # Keep the backoff instant so the whole retry loop finishes fast and
             # we can assert on the diagnostic without waiting a real backoff.
@@ -34,18 +35,23 @@ class TestConnectStallAbort(unittest.TestCase):
             with mock.patch.object(client, "ui_log", lambda s: seen.append(s)), \
                  mock.patch.object(client, "_use_color", lambda: False), \
                  mock.patch.object(config, "RETRY_LIMIT", 2), \
+                 mock.patch.object(client, "_report_run_error",
+                                   lambda note: status_errs.append(note)), \
                  mock.patch.object(client, "_retry_backoff_delay", fast_backoff):
                 # After RETRY_LIMIT stalls it re-raises, as in production.
                 with self.assertRaises(asyncio.TimeoutError):
                     await asyncio.wait_for(
                         client._start_with_retry(_HangApp()), timeout=5.0
                     )
-            return seen
+            return seen, status_errs
 
-        out = asyncio.run(run())
+        out, status_errs = asyncio.run(run())
         # A diagnostic about the stalled connection was shown to the user.
         # Language depends on BOT_LANG, so just require non-empty diagnostics.
         self.assertTrue(out, "no diagnostic was shown to the user")
+        # The stall was also pushed to the status bar so it is visible
+        # during the connection attempts, not only after they finish.
+        self.assertTrue(status_errs, "stall not reported to the status bar")
 
 
 if __name__ == "__main__":
