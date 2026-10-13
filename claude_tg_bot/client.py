@@ -6,6 +6,7 @@ import sys
 
 import pyrogram
 from pyrogram import Client, filters
+from pyrogram.errors import AuthKeyUnregistered, SessionPasswordNeeded
 
 from . import config, i18n
 from .log import log_filename, maybe_cleanup_old_logs, parse_no_proxy, parse_log_flag, setup_logging
@@ -107,6 +108,11 @@ async def _start_with_retry(app):
             logger.info("Connected to Telegram")
             return  # connected — exit the loop
         except KeyboardInterrupt:
+            raise
+        except (AuthKeyUnregistered, SessionPasswordNeeded) as e:
+            # Login/session is no longer valid (401). Retrying won't fix it; the
+            # main() handler shows the re-authenticate message. Exiting cleanly.
+            logger.error("Telegram authorization failed: %s", _friendly(str(e)))
             raise
         except asyncio.TimeoutError:
             if attempt < config.RETRY_LIMIT:
@@ -251,6 +257,23 @@ async def main():
             # All retry attempts were exhausted (e.g. a dead MT-Proxy, or direct
             # connection unavailable with --no-proxy). The reason was already
             # printed by _start_with_retry; exit cleanly, not with a traceback.
+            stop_status.set()
+            status_task.cancel()
+            ui_close()
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            return
+        except Exception as e:
+            # Any other Telegram-side failure (e.g. a dead session). The right
+            # guide depends on the cause: auth -> re-authenticate, else a generic
+            # unexpected-stop message. Either way the reason is shown, not silent.
+            if isinstance(e, (AuthKeyUnregistered, SessionPasswordNeeded)):
+                msg = i18n.t("client.connect_auth", friendly=_friendly(str(e)))
+            else:
+                msg = i18n.t("client.connect_unexpected", friendly=_friendly(str(e)))
+            logger.error("Bot stopped: unexpected Telegram error: %s", _friendly(str(e)))
+            _report_run_error(msg)
+            ui_log(msg)
             stop_status.set()
             status_task.cancel()
             ui_close()
