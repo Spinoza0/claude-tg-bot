@@ -237,7 +237,16 @@ async def main():
     # crash with a traceback, but print a short message and retry with a growing
     # pause. Ctrl+C interrupts the pause.
     with ui_redirect_stdout():
-        await _start_with_retry(app)
+        try:
+            await _start_with_retry(app)
+        except (TimeoutError, OSError, ConnectionError):
+            # All retry attempts were exhausted (e.g. a dead MT-Proxy, or direct
+            # connection unavailable with --no-proxy). The reason was already
+            # printed by _start_with_retry; exit cleanly, not with a traceback.
+            ui_close()
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            return
 
     logger.info("Bot running and working (in %s)", config.SANDBOX_ROOT)
     ui_log(i18n.t("client.running"))
