@@ -100,5 +100,18 @@ class TestOldLogsAndCleanup(unittest.TestCase):
             self.assertEqual([p.name for p in logs], ["claude-tg-bot-a.log"])
 
 
+class TestParseNoProxy(unittest.TestCase):
+    """parse_no_proxy: the --no-proxy CLI switch."""
+
+    def test_absent_is_false(self):
+        self.assertFalse(log.parse_no_proxy(["claude-tg-bot", "--log"]))
+
+    def test_present_is_true(self):
+        self.assertTrue(log.parse_no_proxy(["claude-tg-bot", "--no-proxy"]))
+
+    def test_present_alongside_log(self):
+        self.assertTrue(log.parse_no_proxy(["claude-tg-bot", "--log=DEBUG", "--no-proxy"]))
+
+
 if __name__ == "__main__":
     unittest.main()

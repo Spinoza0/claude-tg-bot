@@ -8,7 +8,7 @@ import pyrogram
 from pyrogram import Client, filters
 
 from . import config, i18n
-from .log import log_filename, maybe_cleanup_old_logs, parse_log_flag, setup_logging
+from .log import log_filename, maybe_cleanup_old_logs, parse_no_proxy, parse_log_flag, setup_logging
 from .process import _active_tasks, acquire_single_instance
 from .retry import _retry_backoff_delay
 from .handlers import on_all_message
@@ -48,7 +48,7 @@ from .status import (
 logger = logging.getLogger("claude_tg_bot")
 
 
-def _build_client() -> Client:
+def _build_client(use_proxy: bool = True) -> Client:
     """Build a Pyrogram Client (Kurigram, dev branch) with native MTProto-proxy support.
 
     Kurigram (dev) supports MTProto-proxy out of the box: we pass the proxy as a
@@ -56,6 +56,9 @@ def _build_client() -> Client:
     (ee → FakeTLS with an SNI-domain, dd/plain → random padding), picks the right
     TCPIntermediatePadded transport and does the FakeTLS handshake. No external
     mtproxy-bridge is needed.
+
+    use_proxy=False (the --no-proxy flag) forces a direct connection, ignoring the
+    configured proxy — a diagnostic/fallback switch.
 
     If MT_PROXY is unset — we pass None: the bot connects to Telegram directly,
     without a proxy (MT_PROXY is no longer mandatory).
@@ -72,56 +75,13 @@ def _build_client() -> Client:
         phone_number=config.PHONE,
         # The 2FA cloud password is not in config.env — the user enters it at login.
         hide_password=True,
-        proxy=config.MT_PROXY or None,
+        proxy=config.MT_PROXY if use_proxy else None,
         # workers=1 — messages are processed SEQUENTIALLY. Otherwise Pyrogram
         # spawns several Claude processes in parallel; on a network failure that
         # multiplies hung processes and yields a mess of answers instead of a clear
         # timeout.
         workers=1,
     )
-
-
-def _proxy_host_port(proxy: str):
-    """Parse 'tg://proxy?server=H&port=N&secret=...' → (host, port) or None."""
-    from urllib.parse import parse_qs, urlparse
-
-    if not proxy:
-        return None
-    try:
-        qs = parse_qs(urlparse(proxy).query)
-        host = (qs.get("server") or qs.get("host") or [None])[0]
-        port = int((qs.get("port") or ["443"])[0])
-        return (host, port) if host else None
-    except (ValueError, TypeError):
-        return None
-
-
-async def _proxy_reachable(host: str, port: int, timeout: float = 5.0) -> bool:
-    """Quick TCP connect check to the proxy endpoint (non-blocking)."""
-    try:
-        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout)
-        writer.close()
-        await writer.wait_closed()
-        return True
-    except Exception:
-        return False
-
-
-async def _warn_if_proxy_unreachable() -> None:
-    """Short, clear diagnostics when MT_PROXY is set but its endpoint is down.
-
-    Without this, app.start() hangs silently inside Pyrogram's own retry loop on
-    an unreachable proxy, so the bot looks dead (no 'Working' status, no retry
-    line). Print one hint up front so the cause is obvious.
-    """
-    endpoint = _proxy_host_port(config.MT_PROXY)
-    if not endpoint:
-        return
-    host, port = endpoint
-    if await _proxy_reachable(host, port):
-        return
-    logger.warning("MT-Proxy %s:%s is unreachable (TCP connect failed)", host, port)
-    ui_log(i18n.t("client.proxy_unreachable", host=host, port=port))
 
 
 async def _start_with_retry(app):
@@ -132,20 +92,41 @@ async def _start_with_retry(app):
     shared backoff scheme: 1, 2, ... min (cap RETRY_MAX_DELAY). After RETRY_LIMIT
     attempts — report the error and exit (we don't loop forever).
 
+    Pyrogram's FakeTLS/MTProxy handshake can stall silently (no exception) when
+    the proxy hangs mid-handshake, so app.start() never returns. We cap it with
+    CONNECT_TIMEOUT and, on timeout, print a clear diagnostic pointing at the
+    proxy/network instead of leaving the console blank.
+
     Ctrl+C interrupts the pause: KeyboardInterrupt/CancelledError are
     BaseException and we don't catch them, so the app closes as usual.
     """
-    # One up-front reachability hint for a configured-but-down proxy, so the
-    # user sees the cause instead of a silent hang inside app.start().
-    await _warn_if_proxy_unreachable()
-
     for attempt in range(1, config.RETRY_LIMIT + 1):
         try:
-            await app.start()
+            await asyncio.wait_for(app.start(), timeout=config.CONNECT_TIMEOUT)
             logger.info("Connected to Telegram")
             return  # connected — exit the loop
         except KeyboardInterrupt:
             raise
+        except asyncio.TimeoutError:
+            if attempt < config.RETRY_LIMIT:
+                note = i18n.t(
+                    "client.connect_stall",
+                    secs=round(config.CONNECT_TIMEOUT),
+                    attempt=attempt, limit=config.RETRY_LIMIT,
+                )
+                logger.warning("Telegram connect timed out after %ss (attempt %s/%s)",
+                               round(config.CONNECT_TIMEOUT), attempt, config.RETRY_LIMIT)
+                if _use_color():
+                    ui_log(f"\033[31m❌ {note}\033[0m")
+                else:
+                    ui_log(f"❌ {note}")
+                await asyncio.sleep(_retry_backoff_delay(attempt))
+            else:
+                logger.error("Could not connect to Telegram after %s attempts (stalls)",
+                             config.RETRY_LIMIT)
+                ui_log(i18n.t("client.connect_fail", limit=config.RETRY_LIMIT,
+                              friendly=i18n.t("client.connect_stall_last")))
+                raise
         except (ConnectionError, TimeoutError, OSError) as e:
             if attempt < config.RETRY_LIMIT:
                 pause = _retry_backoff_delay(attempt)
@@ -221,8 +202,12 @@ async def main():
     # Pyrogram prints "Welcome to Pyrogram" / auth prompts to sys.stdout, which
     # corrupts the curses frame. Route those writes into the log region while we
     # build and connect, then restore stdout for the normal curses handoff.
+    use_proxy = not parse_no_proxy(sys.argv)
+    if not use_proxy and config.MT_PROXY:
+        logger.warning("--no-proxy: ignoring configured MT-Proxy, connecting directly")
+        ui_log(i18n.t("client.no_proxy"))
     with ui_redirect_stdout():
-        app = _build_client()
+        app = _build_client(use_proxy)
 
     # Important: use filters.all, not filters.INCOMING.
     #  - In Saved Messages our own messages come as incoming, but IN A GROUP your
