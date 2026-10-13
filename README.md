@@ -249,9 +249,12 @@ In an interactive terminal the bot runs a small **rich** live console: the bot's
 info/errors scroll in the upper area, and a **status line** (`🟢 Working`
 normally, or `❌ Error: <text>` on a failure — Telegram link or model drop) is
 pinned on the bottom row. The status is redrawn in place and never erases the log
-output. The live console reflows itself on a terminal resize, so text isn't lost
-or left blank. Because it uses the terminal's alternative screen, prior terminal
-history (e.g. a brew log) is hidden while the bot runs and restored on exit.
+output. The status line is active **from startup**, so a slow/hung connection
+(e.g. a non-responding MT-Proxy, detected by `CONNECT_TIMEOUT`) is reported on
+screen while the bot retries — not left blank. The live console reflows itself on
+a terminal resize, so text isn't lost or left blank. Because it uses the
+terminal's alternative screen, prior terminal history (e.g. a brew log) is hidden
+while the bot runs and restored on exit.
 
 When stdout is not a TTY (piped, or `--log` in the background) the live console
 is disabled and the bot falls back to plain one-shot lines without an in-place
