@@ -88,44 +88,57 @@ def _build_client(use_proxy: bool = True) -> Client:
 
 
 async def _ensure_authorized(app):
-    """Make sure the Telegram session is authorized before the live console starts.
+    """Make sure the Telegram session is authorized once the live console is up.
 
-    Runs in the normal terminal (before rich takes over the screen), so Pyrogram's
-    interactive login prompt (phone code, 2FA) is visible and readable from stdin.
-    A dead session (AUTH_KEY_UNREGISTERED — Telegram rejected the stored key) is
-    not a network problem: retrying won't help. Here we detect it, clear the stale
-    session record and let Pyrogram re-authorize interactively, instead of the bot
-    showing "Working" and then silently stopping.
+    Called AFTER ui_init(): the bot is already showing its status, so a network
+    stall does not look like a silent hang. A dead session (AUTH_KEY_UNREGISTERED
+    — Telegram rejected the stored key) is not a network problem: retrying won't
+    help. Here we detect it, clear the stale record and let Pyrogram re-authorize
+    interactively. Because the login code prompt must be readable from stdin, we
+    temporarily LEAVE the live console (ui_close), ask for the code in the normal
+    terminal, then re-enter (ui_init) and carry on.
 
-    On a network failure (proxy/connection hang) we do NOT block startup here —
-    _start_with_retry handles that later, in the live console. We only fail fast
-    when the session itself is invalid.
+    On a network failure we do NOT block here — _start_with_retry handles it in
+    the live console. We only act when the session itself is invalid.
     """
+    auth_needed = False
     try:
-        await asyncio.wait_for(app.connect(), timeout=config.CONNECT_TIMEOUT)
+        with ui_redirect_stdout():
+            await asyncio.wait_for(app.connect(), timeout=config.CONNECT_TIMEOUT)
         if await app.storage.user_id():
             # A stored user id means Pyrogram thinks it's authorized; a real
             # auth-probe (GetState) reveals whether Telegram actually accepts the
             # key. Raises AuthKeyUnregistered if the session was revoked.
-            await app.invoke(raw.functions.updates.GetState())
-        else:
-            await app.authorize()
+            with ui_redirect_stdout():
+                await app.invoke(raw.functions.updates.GetState())
     except AuthKeyUnregistered:
-        # The stored key is no longer registered on Telegram. Clear it so the next
-        # connect() sees an empty session and Pyrogram re-runs authorize().
-        await app.storage.user_id(None)
-        await app.storage.auth_key(None)
-        await app.storage.is_bot(None)
-        await app.storage.save()
-        if not await app.connect():
-            await app.authorize()
+        # The stored key is no longer registered on Telegram. Touch the record so
+        # the next authorize() re-creates it from a clean session.
+        auth_needed = True
     except (asyncio.TimeoutError, ConnectionError, OSError):
         # Network unreachable (e.g. a hung MT-Proxy). Not a session problem; let
         # the main loop retry in the live console. Do not block startup here.
-        pass
+        return
     finally:
         if app.is_connected and app.session is not None:
             await app.disconnect()
+
+    if auth_needed or not await app.storage.user_id():
+        if auth_needed:
+            # Drop the stale session key; a re-connect must see an empty session
+            # so Pyrogram re-runs authorize() instead of re-using the dead key.
+            await app.storage.user_id(None)
+            await app.storage.auth_key(None)
+            await app.storage.is_bot(None)
+            await app.storage.save()
+        try:
+            # Leave the live console so the phone-code / 2FA prompt is printed to
+            # the real terminal and read from stdin (not hidden by rich).
+            ui_close()
+            with ui_redirect_stdout():
+                await app.authorize()
+        finally:
+            ui_init()
 
 
 async def _start_with_retry(app):
@@ -246,25 +259,16 @@ async def main():
     else:
         maybe_cleanup_old_logs()
 
-    # Authorization runs FIRST, in the normal terminal (before the live console
-    # owns the screen): a dead session is re-created interactively (phone code /
-    # 2FA prompt is visibly printed to stdout and read from stdin), rather than
-    # the bot silently stopping on AUTH_KEY_UNREGISTERED.
+    # Interactive console comes on FIRST, so a network/auth stall shows a status
+    # line instead of a silent hang; the "no_proxy" hint and diagnostics are
+    # visible from the start. Auth prompts later briefly leave this console.
     use_proxy = not parse_no_proxy(sys.argv)
+    ui_init()
     if not use_proxy and config.MT_PROXY:
         logger.warning("--no-proxy: ignoring configured MT-Proxy, connecting directly")
-    app = _build_client(use_proxy)
-    await _ensure_authorized(app)
-
-    # Interactive console: split into a scrollable log area and a pinned status
-    # bar so the status never erases ordinary output. No-op when not a tty.
-    ui_init()
-
-    # Pyrogram prints "Welcome to Pyrogram" / auth prompts to sys.stdout, which
-    # corrupts the curses frame. Route those writes into the log region while we
-    # register and connect, then restore stdout for the normal curses handoff.
-    if not use_proxy and config.MT_PROXY:
         ui_log(i18n.t("client.no_proxy"))
+
+    app = _build_client(use_proxy)
 
     # Important: use filters.all, not filters.INCOMING.
     #  - In Saved Messages our own messages come as incoming, but IN A GROUP your
@@ -289,6 +293,25 @@ async def main():
     mt_state = i18n.t("client.mtproxy_set") if config.MT_PROXY else i18n.t("client.mtproxy_unset")
     ui_log(i18n.t("client.mtproxy", state=mt_state))
     ui_log(i18n.t("client.claude_cmd", cmd=f"{config.CLAUDE_COMMAND} {config.COMMAND_ARGS}".strip()))
+
+    # Re-authorize a dead session in the live console (a dead key is not fixable
+    # by retrying). This briefly leaves the live console to ask for the login
+    # code, then re-enters and keeps running. Ctrl+C here (while connecting or
+    # waiting for the code) exits cleanly, not with a traceback.
+    try:
+        await _ensure_authorized(app)
+    except KeyboardInterrupt:
+        ui_close()
+        return
+    except (AuthKeyUnregistered, SessionPasswordNeeded) as e:
+        # Re-authorization did not succeed (e.g. the user aborted or the code was
+        # wrong). Show the reason in the normal terminal and exit, not silently.
+        msg = i18n.t("client.connect_auth", friendly=_friendly(str(e)))
+        logger.error("Telegram authorization failed: %s", _friendly(str(e)))
+        ui_close()
+        sys.stdout.write("\n" + msg + "\n")
+        sys.stdout.flush()
+        return
 
     # start() — connect to Telegram (incl. login). On a network failure we don't
     # crash with a traceback, but print a short message and retry with a growing
