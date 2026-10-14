@@ -311,7 +311,7 @@ class TestRichRender(unittest.TestCase):
         con = Console(width=width, height=height, record=True, file=open("/dev/null", "w"))
         with st._LOCK:
             saved_log = list(st._LOG)
-            st._LOG[:] = ["R1_root", "R2_sandbox", "R3_mtproxy"]
+            st._LOG[:] = ["R1_root", "R2_sandbox", "R3_proxy"]
         saved_status = st._status_display
         st._status_display = "\033[32m🟢 Working\033[0m [2026-09-28 19:24:37]"
         try:
@@ -326,7 +326,7 @@ class TestRichRender(unittest.TestCase):
     def test_layout_includes_log_and_status(self):
         out = self._render(80, 24)
         self.assertIn("R1_root", out)
-        self.assertIn("R3_mtproxy", out)
+        self.assertIn("R3_proxy", out)
         self.assertIn("Work", out)  # the status row ("🟢 Working…")
 
     def test_survives_narrow_and_wide(self):

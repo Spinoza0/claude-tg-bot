@@ -46,7 +46,7 @@ GROUPS = [
         ("API_ID", True, "", "App ID (my.telegram.org/apps)"),
         ("API_HASH", True, "", "App hash (my.telegram.org/apps)"),
         ("PHONE", True, "", "Telegram account number, e.g. +79991234567"),
-        ("MT_PROXY", False, "", "MTProto proxy (tg://proxy?server=..&port=..&secret=..). Empty — direct connection"),
+        ("PROXY", False, "", "Telegram proxy: tg://proxy?server=..&port=..&secret=.. (MTProxy) or tg://webproxy?server=..&secret=.. (Web proxy). Empty — direct connection"),
     ]),
     ("Access", [
         ("ALLOWED_USERS", True, "", "user_id of those the bot answers (comma-separated). Empty — bot is closed"),
@@ -112,6 +112,9 @@ def _reserved_collision(value: str) -> bool:
 
 def _load_existing() -> dict[str, str]:
     """Read current config.env values (if the file exists)."""
+    # Legacy configs stored the proxy under MT_PROXY; map it to PROXY here so the
+    # setup flow carries the value over without the user re-entering it.
+    legacy_keys = {"MT_PROXY": "PROXY"}
     result: dict[str, str] = {}
     if not _CFG_PATH.is_file():
         return result
@@ -124,7 +127,7 @@ def _load_existing() -> dict[str, str]:
         if not key:
             continue
         val = _strip_inline_comment(val.strip()).strip().strip('"').strip("'")
-        result[key] = val
+        result[legacy_keys.get(key, key)] = val
     return result
 
 

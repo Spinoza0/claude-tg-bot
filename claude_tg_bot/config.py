@@ -84,10 +84,13 @@ PHONE: str = os.getenv("PHONE", "")
 # MTProto client session file name (the .session is stored in DATA_DIR)
 SESSION_NAME: str = os.getenv("SESSION_NAME", "claude-tg-bot")
 
-# MTProto proxy in the form tg://proxy?server=...&port=...&secret=...
-# The MTProto client accepts it natively. Example (fake):
-# tg://proxy?server=example.example.com&port=443&secret=0000...
-MT_PROXY: str = os.getenv("MT_PROXY", "")
+# Telegram proxy, passed straight to the MTProto client as a string. The client
+# picks the proxy type from the scheme: tg://proxy?... (MTProxy) and
+# tg://webproxy?... / https://t.me/webproxy?... (Telegram Web proxy) are both
+# supported. Sample (fake):
+#   tg://proxy?server=example.example.com&port=443&secret=0000...
+#   tg://webproxy?server=web.example.com&secret=0000...
+PROXY: str = os.getenv("PROXY", os.getenv("MT_PROXY", ""))
 
 def _parse_ids(raw: str) -> set:
     """Parse an id list from a string of comma-separated numbers.

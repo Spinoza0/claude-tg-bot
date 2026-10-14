@@ -38,6 +38,12 @@ if [ ! -f "$CONFIG_ENV" ]; then
     CONFIG_ENV="$DIR/config.env"
 fi
 
+# Apply any one-time config.env migrations (e.g. legacy key renames) before the
+# bot reads it, so main code never has to change when a new migration is added.
+if [ -f "$CONFIG_ENV" ]; then
+    "$VENV/bin/python" -m claude_tg_bot.migrations "$CONFIG_ENV" 2>/dev/null || true
+fi
+
 # Show the config path first — it determines both the projects root and the
 # sandbox. The bot prints the projects root and the sandbox directory in main
 # (right after config.env). We pass the language from this config for the shared

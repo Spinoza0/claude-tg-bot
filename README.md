@@ -5,9 +5,10 @@
 A Telegram bot for managing **Claude**.
 
 The bot runs as a **userbot on an MTProto client over the MTProto protocol** via
-an **MTProto proxy** (`tg://proxy?...`), so it **requires no access to
-`api.telegram.org` (Bot API)**. This lets you run the bot where the Bot API is
-blocked but an MTProto proxy is a working channel.
+a **Telegram proxy** — an **MTProto proxy** (`tg://proxy?...`) or a **Telegram Web
+proxy** (`tg://webproxy?...`) — so it **requires no access to `api.telegram.org`
+(Bot API)**. This lets you run the bot where the Bot API is blocked but an
+MTProto/Web proxy is a working channel.
 
 Interaction with the model goes through the **Claude command line**. The exact
 command is configured in `config.env` (`CLAUDE_COMMAND`): the standard `claude`
@@ -18,7 +19,7 @@ flags are passed via `COMMAND_ARGS`.
 
 ```
 Telegram account  (userbot)
-     │  MTProto client [via MT_PROXY, if set]
+     │  MTProto client [via PROXY (MTProxy or Web proxy), if set]
      ▼
  claude_tg_bot/  — package: handlers (handlers), commands (commands), attach (attach),
                     status (status), Claude launcher (runner), sessions (sessions)
@@ -99,9 +100,11 @@ Mandatory values:
 - `PROJECTS_ROOT` — the projects root where the bot is allowed to work (see below)
 
 Optional:
-- `MT_PROXY` — a `tg://proxy?...` string. If **not set** — the bot connects to
-  Telegram **directly, without a proxy**. A proxy is needed only if direct access
-  is unavailable (e.g. `api.telegram.org` is blocked).
+- `PROXY` — a Telegram proxy string: `tg://proxy?server=..&port=..&secret=..`
+  (MTProxy) or `tg://webproxy?server=..&secret=..` (Web proxy). The client picks
+  the type from the scheme. If **not set** — the bot connects to Telegram
+  **directly, without a proxy**. A proxy is needed only if direct access is
+  unavailable (e.g. `api.telegram.org` is blocked).
 - `CLAUDE_COMMAND` — the command that launches Claude. Default `claude`.
   You can specify another wrapper.
 - `COMMAND_ARGS` — additional command-line arguments appended to
@@ -228,12 +231,12 @@ interactive launch without `--log`, but with existing logs — the bot offers to
 delete them (default — don't delete).
 
 **`--no-proxy`** forces a direct Telegram connection, ignoring the configured
-`MT_PROXY` even if it is set. It is a diagnostic / fallback switch — for example,
-when the MT-Proxy is unreachable or hangs on the handshake and you want to verify
+`PROXY` even if it is set. It is a diagnostic / fallback switch — for example,
+when the proxy is unreachable or hangs on the handshake and you want to verify
 the bot works without it:
 
 ```bash
-claude-tg-bot --no-proxy          # ignore MT_PROXY, connect directly
+claude-tg-bot --no-proxy          # ignore PROXY, connect directly
 claude-tg-bot --no-proxy --log    # both switches together
 ```
 
@@ -250,7 +253,7 @@ info/errors scroll in the upper area, and a **status line** (`🟢 Working`
 normally, or `❌ Error: <text>` on a failure — Telegram link or model drop) is
 pinned on the bottom row. The status is redrawn in place and never erases the log
 output. The status line is active **from startup**, so a slow/hung connection
-(e.g. a non-responding MT-Proxy, detected by `CONNECT_TIMEOUT`) is reported on
+(e.g. a non-responding proxy, detected by `CONNECT_TIMEOUT`) is reported on
 screen while the bot retries — not left blank. The live console reflows itself on
 a terminal resize, so text isn't lost or left blank. Because it uses the
 terminal's alternative screen, prior terminal history (e.g. a brew log) is hidden

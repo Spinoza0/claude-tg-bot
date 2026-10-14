@@ -27,10 +27,10 @@ This project holds real data that must not be committed:
 
 | File / data | What it is | Status |
 |---|---|---|
-| `config.env` | Real settings: API_ID, API_HASH, PHONE, **MT_PROXY (secret)**, ALLOWED_USERS | ❌ Do NOT commit |
+| `config.env` | Real settings: API_ID, API_HASH, PHONE, **PROXY (secret)**, ALLOWED_USERS | ❌ Do NOT commit |
 | `claude-tg-bot.session` | MTProto-client authorization (Telegram login) | ❌ Do NOT commit |
 | `state.json` | User session state | ❌ Do NOT commit |
-| `MT_PROXY` secret | Access key to the MTProto proxy | ❌ NEVER publish |
+| `PROXY` secret | Access key to the Telegram proxy | ❌ NEVER publish |
 
 `config.env.example` — the **ONLY** configuration file that may be committed.
 It must contain **only fake data** (placeholders), no real proxy host, secret,
@@ -95,7 +95,7 @@ environment).
 
 ### 6. Never edit `config.env` or print its full content
 `config.env` holds real secrets. Do not open it in replies to the user, and do
-not copy the MT_PROXY/secret value into chat, messages, or documentation.
+not copy the PROXY/secret value into chat, messages, or documentation.
 
 ## What may be committed
 
@@ -251,10 +251,15 @@ Knowledge that saved a lot of debugging time. Don't repeat these mistakes.
   (FakeTLS, SNI) — **only in the `main` branch**. Check:
   `from pyrogram.connection.proxy import MTProxy`.
 
-### MTProto proxy — no mtproxy-bridge
+### Telegram proxy (MTProxy / Web proxy) — no proxy-bridge
 
 - Kurigram dev does the FakeTLS itself for `tg://proxy?secret=ee`. We pass
-  `proxy=config.MT_PROXY` as a string directly. **mtproxy-bridge is NOT needed**.
+  `proxy=config.PROXY` as a string directly — **proxy-bridge is NOT needed**.
+- The proxy type is chosen by the scheme: `tg://proxy?...` → **MTProxy**,
+  `tg://webproxy?...` / `https://t.me/webproxy?...` → **Telegram Web proxy**
+  (`WebProxy`, fixed port 443). Both are handled natively in `main`; the
+  secret must decode to 16 bytes (or 17 with a `dd` marker, or an `ee` marker +
+  a 16-byte key + a domain).
 - Proxy dependency — `python-socks` (module `python_socks`), **NOT** PySocks
   (`socks`). In `run.sh` the check is `import pyrogram, python_socks, dotenv`
   (PySocks may be absent — don't check it).

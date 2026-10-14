@@ -61,7 +61,7 @@ def parse_log_flag(argv: list[str]) -> tuple[bool, int]:
 def parse_no_proxy(argv: list[str]) -> bool:
     """Parse argv for the --no-proxy flag.
 
-    Returns True when the bot must ignore the configured MT-Proxy even if one is
+    Returns True when the bot must ignore the configured proxy even if one is
     set (a diagnostic/fallback switch — connect to Telegram directly).
     """
     return "--no-proxy" in argv
