@@ -79,6 +79,7 @@
   "client.connect_fail": "\n❌ Не удалось подключиться к Telegram после {limit} попыток: {friendly}\n",
   "client.connect_auth": "\n❌ Авторизация Telegram больше не действует (сессия не авторизована). Переавторизуйтесь: запустите настройку (claude-tg-bot-setup), чтобы войти заново, затем запустите бота заново.\n",
   "client.connect_unexpected": "\n❌ Бот остановлен: непредвиденная ошибка Telegram остановила его: {friendly}\n",
+  "client.connect_no_server": "\n❌ Сервер Telegram недоступен (прокси/сеть не отвечает {secs}с). Бот остановлен; проверьте соединение или настройте рабочий MT-Proxy, затем запустите снова.\n",
   "client.root": "Корень проектов (PROJECTS_ROOT): {path}",
   "client.sandbox_dir": "Каталог песочницы ({cmd}): {path}",
   "client.mtproxy": "MT-прокси: {state}",

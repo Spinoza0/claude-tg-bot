@@ -149,12 +149,14 @@ class TestEnsureAuthorized(unittest.TestCase):
         ui_close.assert_called_once()
         ui_init.assert_called_once()
 
-    def test_network_failure_does_not_block_or_authorize(self):
+    def test_network_failure_raises_does_not_authorize(self):
         app = _AuthApp2(network_fail=True)
         with mock.patch.object(client, "ui_close") as ui_close, \
-             mock.patch.object(client, "ui_init") as ui_init:
+             mock.patch.object(client, "ui_init") as ui_init, \
+             self.assertRaises(ConnectionError):
             asyncio.run(client._ensure_authorized(app))
-        # A network error is not a session problem: no authorize, no hang.
+        # Telegram unreachable: no authorize, no console leave, and the caller
+        # gets the error so main() can print a message and stop, not hang.
         self.assertEqual(app.authorized, 0)
         ui_close.assert_not_called()
         ui_init.assert_not_called()

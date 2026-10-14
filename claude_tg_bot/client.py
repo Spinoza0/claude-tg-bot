@@ -115,10 +115,11 @@ async def _ensure_authorized(app):
         # The stored key is no longer registered on Telegram. Touch the record so
         # the next authorize() re-creates it from a clean session.
         auth_needed = True
-    except (asyncio.TimeoutError, ConnectionError, OSError):
-        # Network unreachable (e.g. a hung MT-Proxy). Not a session problem; let
-        # the main loop retry in the live console. Do not block startup here.
-        return
+    except (asyncio.TimeoutError, ConnectionError, OSError) as e:
+        # Network unreachable (e.g. a hung MT-Proxy, or Telegram's own DC down).
+        # We can't even reach Telegram, so there is no session to authorize — and
+        # retrying won't help. Report the cause and let main() stop, not hang.
+        raise
     finally:
         if app.is_connected and app.session is not None:
             await app.disconnect()
@@ -308,6 +309,17 @@ async def main():
         # wrong). Show the reason in the normal terminal and exit, not silently.
         msg = i18n.t("client.connect_auth", friendly=_friendly(str(e)))
         logger.error("Telegram authorization failed: %s", _friendly(str(e)))
+        ui_close()
+        sys.stdout.write("\n" + msg + "\n")
+        sys.stdout.flush()
+        return
+    except (TimeoutError, OSError, ConnectionError):
+        # Telegram's server is unreachable (hung MT-Proxy, or the DC down with
+        # --no-proxy). We couldn't even connect, so there is no session to
+        # authorize; retrying won't help. Show a clear message and stop.
+        msg = i18n.t("client.connect_no_server", secs=round(config.CONNECT_TIMEOUT))
+        logger.error("Telegram server unreachable after %ss", round(config.CONNECT_TIMEOUT))
+        _report_run_error(msg)
         ui_close()
         sys.stdout.write("\n" + msg + "\n")
         sys.stdout.flush()

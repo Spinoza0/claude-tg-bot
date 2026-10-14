@@ -79,6 +79,7 @@
   "client.connect_fail": "\n❌ Could not connect to Telegram after {limit} attempts: {friendly}\n",
   "client.connect_auth": "\n❌ Telegram login is no longer valid (session not authorized). Re-authenticate: run the setup (claude-tg-bot-setup) to re-login, then start again.\n",
   "client.connect_unexpected": "\n❌ The bot stopped: an unexpected Telegram error stopped it: {friendly}\n",
+  "client.connect_no_server": "\n❌ Telegram server is unreachable (proxy/network not answering after {secs}s). The bot stopped; check your connection or configure a working MT-Proxy, then start again.\n",
   "client.root": "Projects root (PROJECTS_ROOT): {path}",
   "client.sandbox_dir": "Sandbox folder ({cmd}): {path}",
   "client.mtproxy": "MT-Proxy: {state}",
