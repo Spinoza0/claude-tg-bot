@@ -137,18 +137,27 @@ class _AuthApp2:
 class TestEnsureAuthorized(unittest.TestCase):
     def test_dead_session_is_reauthorized(self):
         app = _AuthApp2(dead_session=True)
-        asyncio.run(client._ensure_authorized(app))
-        # The stale session was cleared and Pyrogram re-authorized (login prompt).
+        with mock.patch.object(client, "ui_close") as ui_close, \
+             mock.patch.object(client, "ui_init") as ui_init:
+            asyncio.run(client._ensure_authorized(app))
+        # The stale session was cleared and Pyrogram re-authorized (login prompt),
+        # and the live console was briefly left/entered so the code prompt is seen.
         self.assertIsNone(app.storage._user_id)
         self.assertIsNone(app.storage._auth_key)
         self.assertEqual(app.authorized, 1)
         self.assertEqual(app.storage.saved, 1)
+        ui_close.assert_called_once()
+        ui_init.assert_called_once()
 
     def test_network_failure_does_not_block_or_authorize(self):
         app = _AuthApp2(network_fail=True)
-        asyncio.run(client._ensure_authorized(app))
+        with mock.patch.object(client, "ui_close") as ui_close, \
+             mock.patch.object(client, "ui_init") as ui_init:
+            asyncio.run(client._ensure_authorized(app))
         # A network error is not a session problem: no authorize, no hang.
         self.assertEqual(app.authorized, 0)
+        ui_close.assert_not_called()
+        ui_init.assert_not_called()
 
 
 if __name__ == "__main__":
