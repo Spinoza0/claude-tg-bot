@@ -250,7 +250,21 @@ async def main():
         logger.warning("--no-proxy: ignoring configured proxy, connecting directly")
         ui_log(i18n.t("client.no_proxy"))
 
-    app = _build_client(use_proxy)
+    app = None
+    try:
+        app = _build_client(use_proxy)
+    except ValueError as e:
+        # A malformed proxy string (bad secret length/format) makes Client()
+        # raise before any connection attempt. Report it clearly, don't crash
+        # with a traceback and an empty log.
+        friendly = _friendly(str(e))
+        logger.error("Invalid Telegram proxy: %s", friendly)
+        msg = i18n.t("client.connect_proxy_bad", friendly=friendly)
+        _report_run_error(msg)
+        ui_close()
+        sys.stdout.write("\n" + msg + "\n")
+        sys.stdout.flush()
+        return
 
     # Important: use filters.all, not filters.INCOMING.
     #  - In Saved Messages our own messages come as incoming, but IN A GROUP your

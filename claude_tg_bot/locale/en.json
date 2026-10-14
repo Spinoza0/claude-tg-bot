@@ -80,6 +80,7 @@
   "client.connect_auth": "\n❌ Telegram login is no longer valid (session not authorized). Re-authenticate: run the setup (claude-tg-bot-setup) to re-login, then start again.\n",
   "client.connect_unexpected": "\n❌ The bot stopped: an unexpected Telegram error stopped it: {friendly}\n",
   "client.connect_no_server": "\n❌ Telegram server is unreachable (proxy/network not answering after {secs}s). The bot stopped; check your connection or configure a working Telegram proxy, then start again.\n",
+  "client.connect_proxy_bad": "\n❌ The Telegram proxy in config.env is invalid: {friendly}\n   Check the proxy string: an MTProxy secret must be 16 bytes (or a dd-prefixed 17 bytes), and a Telegram Web proxy secret must be 16 bytes — it cannot use 'ee' (TLS-emulation). Fix config.env (PROXY), then start again.\n",
   "client.root": "Projects root (PROJECTS_ROOT): {path}",
   "client.sandbox_dir": "Sandbox folder ({cmd}): {path}",
   "client.proxy": "Proxy: {state}",
