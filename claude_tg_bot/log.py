@@ -104,9 +104,15 @@ def is_tty() -> bool:
 
 
 def _ask_yes_no(prompt: str, default: bool = False) -> bool:
-    """Ask y/n with a default. Only for interactive (tty) launches."""
+    """Ask y/n with a default. Only for interactive (tty) launches.
+
+    Read from stdin as bytes and decode with errors=replace, so a terminal that
+    sends non-UTF-8 input can't crash the bot (input() would raise UnicodeDecodeError).
+    """
     try:
-        answer = input(prompt).strip().lower()
+        sys.stdout.write(prompt)
+        sys.stdout.flush()
+        answer = sys.stdin.buffer.readline().decode("utf-8", errors="replace").strip().lower()
     except (EOFError, KeyboardInterrupt):
         return default
     if not answer:
