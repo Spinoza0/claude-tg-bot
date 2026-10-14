@@ -10,6 +10,7 @@ import asyncio
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -80,68 +81,42 @@ class TestRunWithRetry(unittest.TestCase):
 
 
 class TestStartWithRetry(unittest.TestCase):
-    """Connection retry: pause growth, 5-min cap, interruption."""
+    """start-with-retry now stops (no retry loop) on an unreachable server."""
 
-    def setUp(self):
-        self._orig_sleep = client.asyncio.sleep
-
-    def tearDown(self):
-        client.asyncio.sleep = self._orig_sleep
-
-    def test_delay_grows_and_success_exits(self):
-        sleeps = []
-        orig = client.asyncio.sleep
-        async def fake_sleep(sec):
-            sleeps.append(sec)
-            await orig(0)
-        client.asyncio.sleep = fake_sleep
-        app = _FakeApp(fails=2)
-        asyncio.run(client._start_with_retry(app))
-        self.assertEqual(app.attempts, 3)
-        self.assertEqual(sleeps, [60, 120])
-
-    def test_delay_caps_at_5_min(self):
-        sleeps = []
-
-        async def fake_sleep(sec):
-            sleeps.append(sec)
-            raise KeyboardInterrupt()  # exit the loop after the first pause
-
-        client.asyncio.sleep = fake_sleep
-
-        class AlwaysFail:
+    def test_success_returns(self):
+        class OkApp:
+            tries = 0
             async def start(self):
-                raise ConnectionError("boom")
+                OkApp.tries += 1
+                return True
 
-        with self.assertRaises(KeyboardInterrupt):
-            asyncio.run(client._start_with_retry(AlwaysFail()))
-        self.assertEqual(sleeps[0], 60)
+        asyncio.run(client._start_with_retry(OkApp()))
+        self.assertEqual(OkApp.tries, 1)
 
-    def test_exhausts_and_raises(self):
-        orig = client.asyncio.sleep
+    def test_connection_error_stops_immediately(self):
+        # _ensure_authorized has already confirmed the network; if start() fails,
+        # the server is gone — retrying won't help, so _start_with_retry raises
+        # without looping/backoff.
+        seen = []
+        errs = []
+        with mock.patch.object(client, "ui_log", lambda s: seen.append(s)), \
+             mock.patch.object(client, "_report_run_error", lambda n: errs.append(n)):
 
-        async def fake_sleep(sec):
-            await orig(0)
-        client.asyncio.sleep = fake_sleep
+            class AlwaysFail:
+                async def start(self):
+                    raise ConnectionError("boom")
 
-        class AlwaysFail:
-            async def start(self):
-                raise ConnectionError("boom")
-
-        with self.assertRaises(ConnectionError):
-            asyncio.run(client._start_with_retry(AlwaysFail()))
+            with self.assertRaises(ConnectionError):
+                asyncio.run(client._start_with_retry(AlwaysFail()))
+        self.assertTrue(errs, "no error reported")
 
     def test_keyboard_interrupt_propagates(self):
-        class AlwaysFail:
+        class Hang:
             async def start(self):
-                raise ConnectionError("boom")
+                raise KeyboardInterrupt()
 
-        async def fake_sleep(sec):
-            raise KeyboardInterrupt()
-
-        client.asyncio.sleep = fake_sleep
         with self.assertRaises(KeyboardInterrupt):
-            asyncio.run(client._start_with_retry(AlwaysFail()))
+            asyncio.run(client._start_with_retry(Hang()))
 
     def test_non_network_error_propagates(self):
         class AuthFail:
