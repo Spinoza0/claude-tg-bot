@@ -75,5 +75,81 @@ class TestConnectAuthError(unittest.TestCase):
                 asyncio.run(client._start_with_retry(_AuthApp()))
 
 
+class _MemoryStorage:
+    """Thin stand-in for the pyrogram session storage (connects=False beyond a flag)."""
+
+    def __init__(self, user_id=None):
+        self._user_id = user_id
+        self._auth_key = b"\x00" if user_id is not None else None
+        self._is_bot = False
+        self.saved = 0
+
+    async def user_id(self, value=object):
+        if value is not object:
+            self._user_id = value
+        return self._user_id
+
+    async def auth_key(self, value=object):
+        if value is not object:
+            self._auth_key = value
+        return self._auth_key
+
+    async def is_bot(self, value=object):
+        if value is not object:
+            self._is_bot = value
+        return self._is_bot
+
+    async def save(self):
+        self.saved += 1
+
+
+class _AuthApp2:
+    """Stand-in Client that connects, has a storage, and probes auth via GetState."""
+
+    def __init__(self, *, dead_session=False, network_fail=False):
+        self.storage = _MemoryStorage(user_id=123 if dead_session else None)
+        self.is_connected = False
+        self.session = object()
+        self.dead_session = dead_session
+        self.network_fail = network_fail
+        self.authorized = 0
+
+    async def connect(self):
+        if self.network_fail:
+            raise ConnectionError("network down")
+        self.is_connected = True
+        return bool(self.storage._user_id)
+
+    async def disconnect(self):
+        self.is_connected = False
+
+    async def authorize(self):
+        self.authorized += 1
+
+    async def invoke(self, fn):
+        if self.dead_session:
+            from pyrogram.errors import AuthKeyUnregistered
+
+            raise AuthKeyUnregistered("AUTH_KEY_UNREGISTERED")
+        return None
+
+
+class TestEnsureAuthorized(unittest.TestCase):
+    def test_dead_session_is_reauthorized(self):
+        app = _AuthApp2(dead_session=True)
+        asyncio.run(client._ensure_authorized(app))
+        # The stale session was cleared and Pyrogram re-authorized (login prompt).
+        self.assertIsNone(app.storage._user_id)
+        self.assertIsNone(app.storage._auth_key)
+        self.assertEqual(app.authorized, 1)
+        self.assertEqual(app.storage.saved, 1)
+
+    def test_network_failure_does_not_block_or_authorize(self):
+        app = _AuthApp2(network_fail=True)
+        asyncio.run(client._ensure_authorized(app))
+        # A network error is not a session problem: no authorize, no hang.
+        self.assertEqual(app.authorized, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

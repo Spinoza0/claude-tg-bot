@@ -6,6 +6,7 @@ import sys
 
 import pyrogram
 from pyrogram import Client, filters
+from pyrogram import raw
 from pyrogram.errors import AuthKeyUnregistered, SessionPasswordNeeded
 
 from . import config, i18n
@@ -84,6 +85,47 @@ def _build_client(use_proxy: bool = True) -> Client:
         # timeout.
         workers=1,
     )
+
+
+async def _ensure_authorized(app):
+    """Make sure the Telegram session is authorized before the live console starts.
+
+    Runs in the normal terminal (before rich takes over the screen), so Pyrogram's
+    interactive login prompt (phone code, 2FA) is visible and readable from stdin.
+    A dead session (AUTH_KEY_UNREGISTERED — Telegram rejected the stored key) is
+    not a network problem: retrying won't help. Here we detect it, clear the stale
+    session record and let Pyrogram re-authorize interactively, instead of the bot
+    showing "Working" and then silently stopping.
+
+    On a network failure (proxy/connection hang) we do NOT block startup here —
+    _start_with_retry handles that later, in the live console. We only fail fast
+    when the session itself is invalid.
+    """
+    try:
+        await asyncio.wait_for(app.connect(), timeout=config.CONNECT_TIMEOUT)
+        if await app.storage.user_id():
+            # A stored user id means Pyrogram thinks it's authorized; a real
+            # auth-probe (GetState) reveals whether Telegram actually accepts the
+            # key. Raises AuthKeyUnregistered if the session was revoked.
+            await app.invoke(raw.functions.updates.GetState())
+        else:
+            await app.authorize()
+    except AuthKeyUnregistered:
+        # The stored key is no longer registered on Telegram. Clear it so the next
+        # connect() sees an empty session and Pyrogram re-runs authorize().
+        await app.storage.user_id(None)
+        await app.storage.auth_key(None)
+        await app.storage.is_bot(None)
+        await app.storage.save()
+        if not await app.connect():
+            await app.authorize()
+    except (asyncio.TimeoutError, ConnectionError, OSError):
+        # Network unreachable (e.g. a hung MT-Proxy). Not a session problem; let
+        # the main loop retry in the live console. Do not block startup here.
+        pass
+    finally:
+        if app.is_connected and app.session is not None:
+            await app.disconnect()
 
 
 async def _start_with_retry(app):
@@ -204,19 +246,25 @@ async def main():
     else:
         maybe_cleanup_old_logs()
 
+    # Authorization runs FIRST, in the normal terminal (before the live console
+    # owns the screen): a dead session is re-created interactively (phone code /
+    # 2FA prompt is visibly printed to stdout and read from stdin), rather than
+    # the bot silently stopping on AUTH_KEY_UNREGISTERED.
+    use_proxy = not parse_no_proxy(sys.argv)
+    if not use_proxy and config.MT_PROXY:
+        logger.warning("--no-proxy: ignoring configured MT-Proxy, connecting directly")
+    app = _build_client(use_proxy)
+    await _ensure_authorized(app)
+
     # Interactive console: split into a scrollable log area and a pinned status
     # bar so the status never erases ordinary output. No-op when not a tty.
     ui_init()
 
     # Pyrogram prints "Welcome to Pyrogram" / auth prompts to sys.stdout, which
     # corrupts the curses frame. Route those writes into the log region while we
-    # build and connect, then restore stdout for the normal curses handoff.
-    use_proxy = not parse_no_proxy(sys.argv)
+    # register and connect, then restore stdout for the normal curses handoff.
     if not use_proxy and config.MT_PROXY:
-        logger.warning("--no-proxy: ignoring configured MT-Proxy, connecting directly")
         ui_log(i18n.t("client.no_proxy"))
-    with ui_redirect_stdout():
-        app = _build_client(use_proxy)
 
     # Important: use filters.all, not filters.INCOMING.
     #  - In Saved Messages our own messages come as incoming, but IN A GROUP your
@@ -277,8 +325,11 @@ async def main():
             stop_status.set()
             status_task.cancel()
             ui_close()
-            sys.stdout.write("\n")
-            sys.stdout.flush()
+            # The live-console frame is torn down, so the buffered ui_log lines may
+            # not have been painted. Write the reason directly to the real terminal
+            # (not sys.stdout, still redirected into rich) so it is never lost.
+            sys.__stdout__.write("\n" + msg + "\n")
+            sys.__stdout__.flush()
             return
 
     logger.info("Bot running and working (in %s)", config.SANDBOX_ROOT)
