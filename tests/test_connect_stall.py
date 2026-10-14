@@ -162,5 +162,29 @@ class TestEnsureAuthorized(unittest.TestCase):
         ui_init.assert_not_called()
 
 
+class TestWithTimeout(unittest.TestCase):
+    def test_stalling_coroutine_raises_timeout(self):
+        # A coroutine that never finishes (a hung direct connect to an
+        # unreachable Telegram DC) — _with_timeout must raise TimeoutError and
+        # NOT hang (asyncio.wait_for would, because Pyrogram ignores cancel).
+        async def never():
+            await asyncio.sleep(9999)
+
+        async def run():
+            with self.assertRaises(asyncio.TimeoutError):
+                await client._with_timeout(never(), 0.2)
+
+        asyncio.run(run())
+
+    def test_completed_coroutine_returns_result(self):
+        async def ok():
+            return 42
+
+        async def run():
+            self.assertEqual(await client._with_timeout(ok(), 5), 42)
+
+        asyncio.run(run())
+
+
 if __name__ == "__main__":
     unittest.main()

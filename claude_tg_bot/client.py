@@ -87,6 +87,23 @@ def _build_client(use_proxy: bool = True) -> Client:
     )
 
 
+async def _with_timeout(coro, timeout):
+    """Run a coroutine but give up after `timeout` seconds.
+
+    asyncio.wait_for would hang here: Pyrogram's connect()/start() to an
+    unreachable Telegram DC does not respond to task cancellation, so wait_for
+    waits forever for the cancel to finish. asyncio.wait returns on timeout and
+    we abandon (cancel, do not await) the stuck coroutine, so the caller gets a
+    TimeoutError instead of a freeze.
+    """
+    task = asyncio.ensure_future(coro)
+    done, pending = await asyncio.wait({task}, timeout=timeout)
+    if pending:
+        task.cancel()  # abandon; do not wait for the cancel to take effect
+        raise asyncio.TimeoutError
+    return task.result()  # re-raises any exception from the coroutine
+
+
 async def _ensure_authorized(app):
     """Make sure the Telegram session is authorized once the live console is up.
 
@@ -104,7 +121,7 @@ async def _ensure_authorized(app):
     auth_needed = False
     try:
         with ui_redirect_stdout():
-            await asyncio.wait_for(app.connect(), timeout=config.CONNECT_TIMEOUT)
+            await _with_timeout(app.connect(), config.CONNECT_TIMEOUT)
         if await app.storage.user_id():
             # A stored user id means Pyrogram thinks it's authorized; a real
             # auth-probe (GetState) reveals whether Telegram actually accepts the
@@ -143,75 +160,38 @@ async def _ensure_authorized(app):
 
 
 async def _start_with_retry(app):
-    """Connect to Telegram retrying on network failure.
+    """Connect to Telegram and stop on a network failure.
 
-    Instead of crashing with a traceback (TimeoutError after its internal
-    retries) we print a SHORT clear message and repeat the connection with the
-    shared backoff scheme: 1, 2, ... min (cap RETRY_MAX_DELAY). After RETRY_LIMIT
-    attempts — report the error and exit (we don't loop forever).
+    _ensure_authorized has already confirmed the network is reachable and the
+    session is valid, so app.start() should succeed. If it stalls or fails, the
+    Telegram server is gone — retrying won't help, so we report the cause and
+    stop (the caller exits), not retry for many minutes.
 
     Pyrogram's FakeTLS/MTProxy handshake can stall silently (no exception) when
     the proxy hangs mid-handshake, so app.start() never returns. We cap it with
-    CONNECT_TIMEOUT and, on timeout, print a clear diagnostic pointing at the
-    proxy/network instead of leaving the console blank.
+    CONNECT_TIMEOUT and, on timeout, raise so the caller shows a clear error.
 
-    Ctrl+C interrupts the pause: KeyboardInterrupt/CancelledError are
-    BaseException and we don't catch them, so the app closes as usual.
+    Ctrl+C propagates: KeyboardInterrupt/CancelledError are BaseException and we
+    don't catch them, so the app closes as usual.
     """
-    for attempt in range(1, config.RETRY_LIMIT + 1):
-        try:
-            await asyncio.wait_for(app.start(), timeout=config.CONNECT_TIMEOUT)
-            logger.info("Connected to Telegram")
-            return  # connected — exit the loop
-        except KeyboardInterrupt:
-            raise
-        except (AuthKeyUnregistered, SessionPasswordNeeded) as e:
-            # Login/session is no longer valid (401). Retrying won't fix it; the
-            # main() handler shows the re-authenticate message. Exiting cleanly.
-            logger.error("Telegram authorization failed: %s", _friendly(str(e)))
-            raise
-        except asyncio.TimeoutError:
-            if attempt < config.RETRY_LIMIT:
-                note = i18n.t(
-                    "client.connect_stall",
-                    secs=round(config.CONNECT_TIMEOUT),
-                    attempt=attempt, limit=config.RETRY_LIMIT,
-                )
-                logger.warning("Telegram connect timed out after %ss (attempt %s/%s)",
-                               round(config.CONNECT_TIMEOUT), attempt, config.RETRY_LIMIT)
-                if _use_color():
-                    ui_log(f"\033[31m❌ {note}\033[0m")
-                else:
-                    ui_log(f"❌ {note}")
-                _report_run_error(note)
-                await asyncio.sleep(_retry_backoff_delay(attempt))
-            else:
-                logger.error("Could not connect to Telegram after %s attempts (stalls)",
-                             config.RETRY_LIMIT)
-                ui_log(i18n.t("client.connect_fail", limit=config.RETRY_LIMIT,
-                              friendly=i18n.t("client.connect_stall_last")))
-                raise
-        except (ConnectionError, TimeoutError, OSError) as e:
-            if attempt < config.RETRY_LIMIT:
-                pause = _retry_backoff_delay(attempt)
-                mins = max(1, round(pause / 60))
-                # One short line: no spam of repeated errors.
-                note = i18n.t("client.connect_retry", friendly=_friendly(str(e)),
-                              mins=mins, attempt=attempt, limit=config.RETRY_LIMIT)
-                logger.warning("Telegram connection: attempt %s/%s failed: %s",
-                               attempt, config.RETRY_LIMIT, _friendly(str(e)))
-                if _use_color():
-                    line = f"\033[31m❌ {note}\033[0m"
-                else:
-                    line = f"❌ {note}"
-                ui_log(line)
-                _report_run_error(note)
-                await asyncio.sleep(pause)
-            else:
-                logger.error("Could not connect to Telegram after %s attempts: %s",
-                             config.RETRY_LIMIT, _friendly(str(e)))
-                ui_log(i18n.t("client.connect_fail", limit=config.RETRY_LIMIT, friendly=_friendly(str(e))))
-                raise
+    try:
+        await _with_timeout(app.start(), config.CONNECT_TIMEOUT)
+        logger.info("Connected to Telegram")
+    except KeyboardInterrupt:
+        raise
+    except (AuthKeyUnregistered, SessionPasswordNeeded) as e:
+        # Login/session is no longer valid (401). Retrying won't fix it; the
+        # main() handler shows the re-authenticate message. Exiting cleanly.
+        logger.error("Telegram authorization failed: %s", _friendly(str(e)))
+        raise
+    except (asyncio.TimeoutError, ConnectionError, TimeoutError, OSError) as e:
+        # Telegram unreachable (hung proxy, or direct DC down). We already know
+        # the network was up a moment ago, so it just died — retrying won't help.
+        logger.error("Could not connect to Telegram: %s", _friendly(str(e)))
+        note = i18n.t("client.connect_fail", limit=1, friendly=_friendly(str(e)))
+        ui_log(note)
+        _report_run_error(note)
+        raise
 
 
 async def _shutdown(app):
