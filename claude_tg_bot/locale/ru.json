@@ -80,6 +80,7 @@
   "client.connect_auth": "\n❌ Авторизация Telegram больше не действует (сессия не авторизована). Переавторизуйтесь: запустите настройку (claude-tg-bot-setup), чтобы войти заново, затем запустите бота заново.\n",
   "client.connect_unexpected": "\n❌ Бот остановлен: непредвиденная ошибка Telegram остановила его: {friendly}\n",
   "client.connect_no_server": "\n❌ Сервер Telegram недоступен (прокси/сеть не отвечает {secs}с). Бот остановлен; проверьте соединение или настройте рабочий Telegram-прокси, затем запустите снова.\n",
+  "client.connect_proxy_bad": "\n❌ Прокси в config.env некорректен: {friendly}\n   Проверьте строку прокси: секрет MTProxy должен быть 16 байт (или 17 байт с маркером dd), а секрет Telegram Web-прокси — 16 байт; он не может использовать 'ee' (эмуляцию TLS). Исправьте config.env (PROXY), затем запустите снова.\n",
   "client.root": "Корень проектов (PROJECTS_ROOT): {path}",
   "client.sandbox_dir": "Каталог песочницы ({cmd}): {path}",
   "client.proxy": "Прокси: {state}",
