@@ -1,6 +1,8 @@
 """Logging tests (issue #12): the --log flag, levels, the file handler."""
 
+import io
 import logging
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -111,6 +113,29 @@ class TestParseNoProxy(unittest.TestCase):
 
     def test_present_alongside_log(self):
         self.assertTrue(log.parse_no_proxy(["claude-tg-bot", "--log=DEBUG", "--no-proxy"]))
+
+
+class TestAskYesNo(unittest.TestCase):
+    """_ask_yes_no must not crash on non-UTF-8 stdin (it reads bytes)."""
+
+    def _feed(self, data: bytes):
+        buf = io.BytesIO(data)
+        with mock.patch.object(sys, "stdin", io.TextIOWrapper(buf, encoding="utf-8")):
+            return log._ask_yes_no("Delete? [y/N] ", default=False)
+
+    def test_yes(self):
+        self.assertTrue(self._feed(b"y\n"))
+
+    def test_no_default(self):
+        self.assertFalse(self._feed(b"n\n"))
+
+    def test_empty_default(self):
+        self.assertFalse(self._feed(b"\n"))
+
+    def test_non_utf8_bytes_do_not_crash(self):
+        # A byte sequence that is invalid UTF-8 (0xd0 followed by newline) used to
+        # raise UnicodeDecodeError in input(); now decoded with errors=replace.
+        self.assertFalse(self._feed(b"\xd0\n"))
 
 
 if __name__ == "__main__":
