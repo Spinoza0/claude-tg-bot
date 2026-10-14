@@ -22,7 +22,7 @@ class TestConfigEditable(unittest.TestCase):
         self.assertTrue(config.is_config_key_editable("sandbox_command"))
 
     def test_non_editable(self):
-        for key in ("API_HASH", "MT_PROXY", "CLAUDE_COMMAND", "COMMAND_ARGS",
+        for key in ("API_HASH", "PROXY", "CLAUDE_COMMAND", "COMMAND_ARGS",
                     "ALLOWED_USERS", "RETRY_LIMIT", "KEEP_AWAKE", "PROJECTS_ROOT"):
             self.assertFalse(config.is_config_key_editable(key), key)
 

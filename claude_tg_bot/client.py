@@ -52,19 +52,20 @@ logger = logging.getLogger("claude_tg_bot")
 
 
 def _build_client(use_proxy: bool = True) -> Client:
-    """Build a Pyrogram Client (Kurigram, dev branch) with native MTProto-proxy support.
+    """Build a Pyrogram Client (Kurigram, dev branch) with native Telegram-proxy support.
 
-    Kurigram (dev) supports MTProto-proxy out of the box: we pass the proxy as a
-    string "tg://proxy?server=...&port=...&secret=..." — it recognizes the secret
-    (ee → FakeTLS with an SNI-domain, dd/plain → random padding), picks the right
-    TCPIntermediatePadded transport and does the FakeTLS handshake. No external
-    mtproxy-bridge is needed.
+    Kurigram (dev) supports MTProxy and Telegram Web proxy out of the box: we pass
+    the configured proxy as a string "tg://proxy?server=...&port=...&secret=..."
+    (MTProxy) or "tg://webproxy?server=...&secret=..." (Web proxy). Kurigram picks
+    the proxy type and transport from the scheme, does the FakeTLS handshake and,
+    for MTProxy, recognizes the secret (ee → FakeTLS with an SNI-domain, dd/plain →
+    random padding). No external proxy-bridge is needed.
 
     use_proxy=False (the --no-proxy flag) forces a direct connection, ignoring the
     configured proxy — a diagnostic/fallback switch.
 
-    If MT_PROXY is unset — we pass None: the bot connects to Telegram directly,
-    without a proxy (MT_PROXY is no longer mandatory).
+    If PROXY is unset — we pass None: the bot connects to Telegram directly,
+    without a proxy (the proxy is no longer mandatory).
 
     Returns the configured Client.
     """
@@ -78,7 +79,7 @@ def _build_client(use_proxy: bool = True) -> Client:
         phone_number=config.PHONE,
         # The 2FA cloud password is not in config.env — the user enters it at login.
         hide_password=True,
-        proxy=config.MT_PROXY if use_proxy else None,
+        proxy=config.PROXY if use_proxy else None,
         # workers=1 — messages are processed SEQUENTIALLY. Otherwise Pyrogram
         # spawns several Claude processes in parallel; on a network failure that
         # multiplies hung processes and yields a mess of answers instead of a clear
@@ -133,7 +134,7 @@ async def _ensure_authorized(app):
         # the next authorize() re-creates it from a clean session.
         auth_needed = True
     except (asyncio.TimeoutError, ConnectionError, OSError) as e:
-        # Network unreachable (e.g. a hung MT-Proxy, or Telegram's own DC down).
+        # Network unreachable (e.g. a hung proxy, or Telegram's own DC down).
         # We can't even reach Telegram, so there is no session to authorize — and
         # retrying won't help. Report the cause and let main() stop, not hang.
         raise
@@ -167,7 +168,7 @@ async def _start_with_retry(app):
     Telegram server is gone — retrying won't help, so we report the cause and
     stop (the caller exits), not retry for many minutes.
 
-    Pyrogram's FakeTLS/MTProxy handshake can stall silently (no exception) when
+    Pyrogram's FakeTLS/proxy handshake can stall silently (no exception) when
     the proxy hangs mid-handshake, so app.start() never returns. We cap it with
     CONNECT_TIMEOUT and, on timeout, raise so the caller shows a clear error.
 
@@ -245,8 +246,8 @@ async def main():
     # visible from the start. Auth prompts later briefly leave this console.
     use_proxy = not parse_no_proxy(sys.argv)
     ui_init()
-    if not use_proxy and config.MT_PROXY:
-        logger.warning("--no-proxy: ignoring configured MT-Proxy, connecting directly")
+    if not use_proxy and config.PROXY:
+        logger.warning("--no-proxy: ignoring configured proxy, connecting directly")
         ui_log(i18n.t("client.no_proxy"))
 
     app = _build_client(use_proxy)
@@ -271,8 +272,8 @@ async def main():
     # projects root and the sandbox directory in a row, so it's clear what's where.
     ui_log(i18n.t("client.root", path=config.PROJECTS_ROOT))
     ui_log(i18n.t("client.sandbox_dir", cmd=config.SANDBOX_COMMAND, path=config.SANDBOX_ROOT))
-    mt_state = i18n.t("client.mtproxy_set") if config.MT_PROXY else i18n.t("client.mtproxy_unset")
-    ui_log(i18n.t("client.mtproxy", state=mt_state))
+    mt_state = i18n.t("client.proxy_set") if config.PROXY else i18n.t("client.proxy_unset")
+    ui_log(i18n.t("client.proxy", state=mt_state))
     ui_log(i18n.t("client.claude_cmd", cmd=f"{config.CLAUDE_COMMAND} {config.COMMAND_ARGS}".strip()))
 
     # Re-authorize a dead session in the live console (a dead key is not fixable
@@ -294,7 +295,7 @@ async def main():
         sys.stdout.flush()
         return
     except (TimeoutError, OSError, ConnectionError):
-        # Telegram's server is unreachable (hung MT-Proxy, or the DC down with
+        # Telegram's server is unreachable (hung proxy, or the DC down with
         # --no-proxy). We couldn't even connect, so there is no session to
         # authorize; retrying won't help. Show a clear message and stop.
         msg = i18n.t("client.connect_no_server", secs=round(config.CONNECT_TIMEOUT))
@@ -317,7 +318,7 @@ async def main():
         try:
             await _start_with_retry(app)
         except (TimeoutError, OSError, ConnectionError):
-            # All retry attempts were exhausted (e.g. a dead MT-Proxy, or direct
+            # All retry attempts were exhausted (e.g. a dead proxy, or direct
             # connection unavailable with --no-proxy). The reason was already
             # printed by _start_with_retry; exit cleanly, not with a traceback.
             stop_status.set()
