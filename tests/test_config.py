@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -37,6 +38,52 @@ class TestFindConfigEnv(unittest.TestCase):
         (project_dir / "config.env").write_text("X=2\n")
         found = config._find_config_env([agent_dir / "config.env", project_dir / "config.env"])
         self.assertEqual(found, agent_dir / "config.env")
+
+    def test_absent_returns_none(self):
+        home = Path(tempfile.mkdtemp())
+        agent_dir = home / ".claude-tg-bot"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        found = config._find_config_env([agent_dir / "config.env"])
+        self.assertIsNone(found)
+
+
+class TestBuildClientProxy(unittest.TestCase):
+    """_build_client maps an empty PROXY to None (direct connection), and passes
+    a configured proxy string through. kurigram must be present (run via .venv);
+    otherwise the test is skipped rather than flaky."""
+
+    def setUp(self):
+        try:
+            import pyrogram  # noqa: F401
+        except ImportError:
+            self.skipTest("pyrogram/kurigram not installed in this interpreter")
+        from claude_tg_bot import config
+        from claude_tg_bot.client import _build_client
+
+        self._config = config
+        self._build_client = _build_client
+
+    def test_empty_proxy_is_none(self):
+        # Empty PROXY (as `config.env` yields for a blank line) must produce a
+        # direct connection, not a malformed empty proxy string.
+        with mock.patch.object(self._config, "PROXY", ""):
+            app = self._build_client(True)
+        self.assertIsNone(app.proxy)
+
+    def test_no_proxy_uses_none(self):
+        # The --no-proxy switch forces a direct connection regardless of config.
+        with mock.patch.object(self._config, "PROXY", "tg://proxy?server=x&port=443&secret=00"):
+            app = self._build_client(False)
+        self.assertIsNone(app.proxy)
+
+    def test_set_proxy_passed_through(self):
+        # A configured proxy string is parsed by kurigram into a proxy object
+        # (not None) — proving the value reaches the client's proxy field.
+        proxy = "tg://proxy?server=example.example.com&port=443&secret=000102030405060708090a0b0c0d0e0f"
+        with mock.patch.object(self._config, "PROXY", proxy):
+            app = self._build_client(True)
+        self.assertIsNotNone(app.proxy)
+        self.assertEqual(app.proxy.hostname, "example.example.com")
 
     def test_fallback_to_second(self):
         project_dir = Path(tempfile.mkdtemp())

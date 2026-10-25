@@ -64,8 +64,10 @@ def _build_client(use_proxy: bool = True) -> Client:
     use_proxy=False (the --no-proxy flag) forces a direct connection, ignoring the
     configured proxy — a diagnostic/fallback switch.
 
-    If PROXY is unset — we pass None: the bot connects to Telegram directly,
-    without a proxy (the proxy is no longer mandatory).
+    If PROXY is unset (empty string) — we pass None: the bot connects to Telegram
+    directly, without a proxy (the proxy is no longer mandatory). An empty string
+    is NOT a valid proxy and would make kurigram raise "not a recognized proxy
+    URL", so it must be mapped to None here.
 
     Returns the configured Client.
     """
@@ -79,7 +81,9 @@ def _build_client(use_proxy: bool = True) -> Client:
         phone_number=config.PHONE,
         # The 2FA cloud password is not in config.env — the user enters it at login.
         hide_password=True,
-        proxy=config.PROXY if use_proxy else None,
+        # An empty PROXY means "no proxy": map it to None so kurigram connects
+        # directly instead of rejecting the empty string as a malformed proxy.
+        proxy=(config.PROXY or None) if use_proxy else None,
         # workers=1 — messages are processed SEQUENTIALLY. Otherwise Pyrogram
         # spawns several Claude processes in parallel; on a network failure that
         # multiplies hung processes and yields a mess of answers instead of a clear
