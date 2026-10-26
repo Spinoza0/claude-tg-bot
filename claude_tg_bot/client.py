@@ -124,47 +124,63 @@ async def _ensure_authorized(app):
     the live console. We only act when the session itself is invalid.
     """
     auth_needed = False
+    has_user_id = False
     try:
         with ui_redirect_stdout():
             await _with_timeout(app.connect(), config.CONNECT_TIMEOUT)
-        if await app.storage.user_id():
+        has_user_id = bool(await app.storage.user_id())
+        if has_user_id:
             # A stored user id means Pyrogram thinks it's authorized; a real
             # auth-probe (GetState) reveals whether Telegram actually accepts the
             # key. Raises AuthKeyUnregistered if the session was revoked.
             with ui_redirect_stdout():
                 await app.invoke(raw.functions.updates.GetState())
     except AuthKeyUnregistered:
-        # The stored key is no longer registered on Telegram. Touch the record so
-        # the next authorize() re-creates it from a clean session.
+        # The stored key is no longer registered on Telegram. Drop it here while
+        # the storage is still open — `disconnect()` below closes the sqlite DB,
+        # and writing to it after that raises sqlite3.ProgrammingError, which
+        # would crash the bot instead of re-authorizing.
+        await app.storage.user_id(None)
+        await app.storage.auth_key(None)
+        await app.storage.is_bot(None)
+        await app.storage.save()
         auth_needed = True
     except (asyncio.TimeoutError, ConnectionError, OSError) as e:
         # Network unreachable (e.g. a hung proxy, or Telegram's own DC down).
         # We can't even reach Telegram, so there is no session to authorize — and
         # retrying won't help. Report the cause and let main() stop, not hang.
-        raise
-    finally:
         if app.is_connected and app.session is not None:
             await app.disconnect()
+        raise
 
-    if auth_needed or not await app.storage.user_id():
-        if auth_needed:
-            # Drop the stale session key; a re-connect must see an empty session
-            # so Pyrogram re-runs authorize() instead of re-using the dead key.
-            await app.storage.user_id(None)
-            await app.storage.auth_key(None)
-            await app.storage.is_bot(None)
-            await app.storage.save()
+    # Close the probe so a stale session can be discarded cleanly. We do NOT call
+    # `authorize()` here: after `disconnect()` the client is connected but not
+    # "started", so `authorize()`'s internal `invoke()` would fail with
+    # `ConnectionError: Client has not been started yet` (which main() used to
+    # misreport as a network failure). Authorization is left to `start()` in
+    # `_start_with_retry`, which brings the client up correctly from a clean
+    # session.
+    if app.is_connected and app.session is not None:
+        await app.disconnect()
+
+    if auth_needed or not has_user_id:
+        # The stored session is revoked (auth_needed) or never fully authorized
+        # (no user_id — e.g. a key without an identity, which a partial/old
+        # session can leave behind). Delete the whole `.session` file, not just
+        # the key inside it, so the next start() begins from a genuinely empty
+        # session and re-authorizes cleanly instead of tripping over a
+        # half-initialized storage.
+        session_file = config.DATA_DIR / (config.SESSION_NAME + ".session")
         try:
-            # Leave the live console so the phone-code / 2FA prompt is printed to
-            # the real terminal and read from stdin (not hidden by rich).
-            ui_close()
-            with ui_redirect_stdout():
-                await app.authorize()
-        finally:
-            ui_init()
+            session_file.unlink(missing_ok=True)
+            logger.info("Removed stale Telegram session: %s", session_file)
+        except OSError as e:
+            logger.warning("Could not remove stale session %s: %s", session_file, e)
+
+    return auth_needed or not has_user_id
 
 
-async def _start_with_retry(app):
+async def _start_with_retry(app, *, needs_auth: bool = False):
     """Connect to Telegram and stop on a network failure.
 
     _ensure_authorized has already confirmed the network is reachable and the
@@ -176,11 +192,20 @@ async def _start_with_retry(app):
     the proxy hangs mid-handshake, so app.start() never returns. We cap it with
     CONNECT_TIMEOUT and, on timeout, raise so the caller shows a clear error.
 
+    When `needs_auth` is True the session was just discarded and `start()` runs
+    `authorize()`, which waits for the user to type a login code from stdin. That
+    must NOT be cut off by CONNECT_TIMEOUT, so the timeout is skipped in that
+    case — `_ensure_authorized` already proved the network is reachable.
+
     Ctrl+C propagates: KeyboardInterrupt/CancelledError are BaseException and we
     don't catch them, so the app closes as usual.
     """
     try:
-        await _with_timeout(app.start(), config.CONNECT_TIMEOUT)
+        if needs_auth:
+            # Authorization prompts for a code interactively; no timeout on it.
+            await app.start()
+        else:
+            await _with_timeout(app.start(), config.CONNECT_TIMEOUT)
         logger.info("Connected to Telegram")
     except KeyboardInterrupt:
         raise
@@ -299,13 +324,14 @@ async def main():
     # code, then re-enters and keeps running. Ctrl+C here (while connecting or
     # waiting for the code) exits cleanly, not with a traceback.
     try:
-        await _ensure_authorized(app)
+        needs_auth = await _ensure_authorized(app)
     except KeyboardInterrupt:
         ui_close()
         return
-    except (AuthKeyUnregistered, SessionPasswordNeeded) as e:
+    except (AuthKeyUnregistered, SessionPasswordNeeded, EOFError) as e:
         # Re-authorization did not succeed (e.g. the user aborted or the code was
-        # wrong). Show the reason in the normal terminal and exit, not silently.
+        # wrong), or the login code could not be read (EOFError — stdin closed,
+        # e.g. a non-interactive launch). Show the reason and exit, not silently.
         msg = i18n.t("client.connect_auth", friendly=_friendly(str(e)))
         logger.error("Telegram authorization failed: %s", _friendly(str(e)))
         ui_close()
@@ -334,7 +360,7 @@ async def main():
     status_task = asyncio.create_task(_status_loop(stop_status))
     with ui_redirect_stdout():
         try:
-            await _start_with_retry(app)
+            await _start_with_retry(app, needs_auth=needs_auth)
         except (TimeoutError, OSError, ConnectionError):
             # All retry attempts were exhausted (e.g. a dead proxy, or direct
             # connection unavailable with --no-proxy). The reason was already
