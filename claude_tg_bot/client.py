@@ -195,15 +195,24 @@ async def _start_with_retry(app, *, needs_auth: bool = False):
     When `needs_auth` is True the session was just discarded and `start()` runs
     `authorize()`, which waits for the user to type a login code from stdin. That
     must NOT be cut off by CONNECT_TIMEOUT, so the timeout is skipped in that
-    case — `_ensure_authorized` already proved the network is reachable.
+    case — `_ensure_authorized` already proved the network is reachable. The full
+    -screen live console is briefly closed (ui_close/ui_init) around it so the
+    code prompt and Ctrl+C reach the real terminal, not the live region.
 
     Ctrl+C propagates: KeyboardInterrupt/CancelledError are BaseException and we
     don't catch them, so the app closes as usual.
     """
     try:
         if needs_auth:
-            # Authorization prompts for a code interactively; no timeout on it.
-            await app.start()
+            # Authorization prompts for the login code interactively; no timeout
+            # on it. Leave the rich live console first (ui_close): the code prompt
+            # must be read from the real stdin and Ctrl+C must reach it, which the
+            # full-screen live region would otherwise swallow. Re-enter after.
+            ui_close()
+            try:
+                await app.start()
+            finally:
+                ui_init()
         else:
             await _with_timeout(app.start(), config.CONNECT_TIMEOUT)
         logger.info("Connected to Telegram")
