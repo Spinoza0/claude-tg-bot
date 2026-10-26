@@ -137,17 +137,15 @@ class _AuthApp2:
 class TestEnsureAuthorized(unittest.TestCase):
     def test_dead_session_is_reauthorized(self):
         app = _AuthApp2(dead_session=True)
-        with mock.patch.object(client, "ui_close") as ui_close, \
-             mock.patch.object(client, "ui_init") as ui_init:
-            asyncio.run(client._ensure_authorized(app))
-        # The stale session was cleared and Pyrogram re-authorized (login prompt),
-        # and the live console was briefly left/entered so the code prompt is seen.
+        with mock.patch.object(client.config, "DATA_DIR", Path("/nonexistent")), \
+             mock.patch.object(client.config, "SESSION_NAME", "claude-tg-bot"):
+            needs_auth = asyncio.run(client._ensure_authorized(app))
+        # The stale session was cleared and `_ensure_authorized` reports that
+        # authorization is needed (a login prompt follows in _start_with_retry).
         self.assertIsNone(app.storage._user_id)
         self.assertIsNone(app.storage._auth_key)
-        self.assertEqual(app.authorized, 1)
+        self.assertTrue(needs_auth)
         self.assertEqual(app.storage.saved, 1)
-        ui_close.assert_called_once()
-        ui_init.assert_called_once()
 
     def test_network_failure_raises_does_not_authorize(self):
         app = _AuthApp2(network_fail=True)
