@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from types import MethodType
 import sys
 
 import pyrogram
@@ -51,6 +52,18 @@ from .status import (
 logger = logging.getLogger("claude_tg_bot")
 
 
+async def _sms_first_send_phone_number_code(self, phone_number, *args, **kwargs):
+    """Send a login code as SMS, not to a Telegram app on another device.
+
+    By default Kurigram's send_phone_number_code uses an empty CodeSettings, so
+    Telegram routes a login code to a Telegram app wherever the phone number
+    already has an active session (SentCodeTypeApp) — a code the user often never
+    sees. Forcing current_number=False makes Telegram send it as an SMS instead.
+    """
+    kwargs.setdefault("current_number", False)
+    return await Client.send_phone_number_code(self, phone_number, *args, **kwargs)
+
+
 def _build_client(use_proxy: bool = True) -> Client:
     """Build a Pyrogram Client (Kurigram, dev branch) with native Telegram-proxy support.
 
@@ -71,7 +84,7 @@ def _build_client(use_proxy: bool = True) -> Client:
 
     Returns the configured Client.
     """
-    return Client(
+    client = Client(
         name=config.SESSION_NAME,
         # Keep the .session in ~/.claude-tg-bot (not cwd), so it survives a
         # brew upgrade / a different launch directory.
@@ -90,6 +103,13 @@ def _build_client(use_proxy: bool = True) -> Client:
         # timeout.
         workers=1,
     )
+    # By default Telegram sends a login code to a Telegram app when the phone
+    # number has an active session elsewhere, which the user may never see. Force
+    # current_number=False so the code comes as an SMS instead.
+    client.send_phone_number_code = MethodType(
+        _sms_first_send_phone_number_code, client
+    )
+    return client
 
 
 async def _with_timeout(coro, timeout):
