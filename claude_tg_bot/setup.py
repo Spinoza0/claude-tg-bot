@@ -35,6 +35,7 @@ DEFAULT_CHOICES = {
     "DELETE_MODE": ["trash", "permanent"],
     "CLAUDE_PERMISSION_MODE": ["bypassPermissions", "acceptEdits", "plan", "default"],
     "AGENT_GENDER": ["male", "female"],
+    "AUTH_CODE_MODE": ["auto", "sms", "call"],
 }
 
 GROUPS = [
@@ -47,6 +48,7 @@ GROUPS = [
         ("API_HASH", True, "", "App hash (my.telegram.org/apps)"),
         ("PHONE", True, "", "Telegram account number, e.g. +79991234567"),
         ("PROXY", False, "", "Telegram proxy: tg://proxy?server=..&port=..&secret=.. (MTProxy) or tg://webproxy?server=..&secret=.. (Web proxy). Empty — direct connection"),
+        ("AUTH_CODE_MODE", False, "auto", "Login code channel: auto (Telegram decides), sms, call"),
     ]),
     ("Access", [
         ("ALLOWED_USERS", True, "", "user_id of those the bot answers (comma-separated). Empty — bot is closed"),

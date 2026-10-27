@@ -30,12 +30,12 @@
   "cmd.permanent": "навсегда",
   "cmd.name_not_selected": "(не выбран)",
   "cmd.config_current": "⚙️ Изменяемые настройки (используй /config KEY=VALUE):",
+  "cmd.config_auth_mode_values": "AUTH_CODE_MODE: auto (Telegram решает), sms, call",
   "cmd.config_done": "✅ Настройки обновлены:",
   "cmd.config_changed": "• {setting} = {value}",
   "cmd.config_unknown": "❓ Неизвестная или неизменяемая настройка '{setting}'. Изменяемые: {allowed}",
   "cmd.config_invalid": "⚠️ Недопустимое значение для '{setting}': {value}. Допустимые: {allowed}",
   "cmd.config_invalid_sandbox": "⚠️ Недопустимое кодовое слово песочницы '{value}'. Оно не должно быть пустым, начинаться с '/' или совпадать с зарезервированной командой бота.",
-
   "handlers.sandbox_create_fail": "⚠️ Не удалось создать каталог песочницы: {path}",
   "handlers.no_project": "Нет активного проекта. Выбери: /list или /new <имя>",
   "handlers.busy": "Думаю...",
@@ -56,7 +56,6 @@
   "handlers.select_project": "Сначала выбери проект: /list или /new <имя>",
   "handlers.download_fail": "Не удалось скачать {kind}: {e}",
   "handlers.unknown_attach": "🤖 Не могу обработать: {kind}.",
-
   "runner.dir_not_exists": "Каталог не существует: {path}",
   "runner.prompt_too_long": "Промпт слишком длинный ({len} символов)",
   "runner.files_attached": "\n\nФайлы (приложены): {refs}",
@@ -64,7 +63,6 @@
   "runner.timeout_diag": "\n\n(диагностика: {tail})",
   "runner.run_error": "⚠️ Ошибка запуска Claude (код {code}):\n{tail}",
   "runner.command_hint": "📖 Доступные команды:\n/start — начать и выбрать проект\n/list — список доступных проектов\n/switch <имя> — переключиться на проект\n/new [имя] — создать новый проект\n/status — текущий проект и сессия\n/config ПАРАМЕТР=ЗНАЧЕНИЕ ... — изменить настройку на лету; без аргументов — показать изменяемые\n/clear — сначала автоматически вызвать /clearattach (очистка вложений), затем отправить в Claude (сброс контекста)\n/clearattach — удалить скачанные вложения текущего проекта ({where})\n/attachsize — показать количество и объём скачанных вложений\n/kill — убить зависшие сессии Claude, запущенные ботом\n{sandbox_cmd} <команда/текст> — работа в песочнице в любом чате (SANDBOX_ROOT)\n/help — эта справка",
-
   "status.working": "Работаю",
   "status.working_ok": "🟢 Работаю",
   "status.error": "❌ Ошибка: {err}",
@@ -72,7 +70,6 @@
   "status.err_no_network": "Нет доступа к сети — не удаётся разрешить хост",
   "status.err_no_connection": "Нет соединения с Telegram",
   "status.err_temp_telegram": "Временная ошибка Telegram (внутренняя/меж-DC)",
-
   "client.connect_retry": "{friendly}. Повтор через {mins} мин ({attempt}/{limit})...",
   "client.connect_stall": "Подключение к Telegram зависло на {secs}с (прокси/сеть не отвечает). Повтор ({attempt}/{limit})...",
   "client.connect_stall_last": "Подключение к Telegram снова и снова зависает — прокси или сеть не отвечает",
@@ -90,10 +87,8 @@
   "client.no_proxy": "⚠ Прокси игнорируется (--no-proxy): прямое подключение к Telegram.",
   "client.running": "✅ Бот запущен и работает. Жду сообщения в Telegram.",
   "client.stop_hint": "   Чтобы остановить — нажми Ctrl+C в этом окне (SIGINT).",
-
   "process.already_starting": "⚠️  Бот уже запускается (lock-файл {name}). Второй экземпляр не запускается.",
   "process.already_running": "⚠️  Бот уже запущен (pid {pids}). Второй экземпляр не запускается.",
-
   "config.cfg_missing": "config.env не найден ни в одном месте. Положи его в один из каталогов:\n  {candidates}\n  (образец: cp config.env.example config.env)",
   "config.api_id_missing": "API_ID не задан (получите на https://my.telegram.org/apps)",
   "config.api_hash_missing": "API_HASH не задан (получите на https://my.telegram.org/apps)",
@@ -103,7 +98,6 @@
   "config.warn_chats": "ALLOWED_CHAT_IDS пуст — бот отвечает только в «Избранном» (Saved Messages), а не в группах. Если нужен другой/несколько чатов — впиши id в ALLOWED_CHAT_IDS (см. README).",
   "config.validation_error": "Ошибка конфигурации:\n  {problems}",
   "config.warning": "⚠️  Предупреждение:\n  {warnings}",
-
   "setup.title": "Настройка claude-tg-bot.",
   "setup.existing": "Найден существующий {path}. Отредактирую его (Enter — оставить текущее).",
   "setup.new": "Создам новый {path}.",
@@ -124,22 +118,18 @@
   "setup.done1": "\nГотово. Дальше:",
   "setup.done2": "  1. Запусти: ./claude-tg-bot",
   "setup.done3": "  2. При первом входе MTProto-клиент запросит код подтверждения из Telegram.",
-
   "log.found_old": "⚠️ Найдены старые логи ({n} файл(ов) в {path}).",
   "log.ask_delete": "Удалить их? [y/N] (по умолчанию НЕ удалять): ",
   "log.deleted": "Удалено {n} файл(ов) логов.",
-
   "uni.B": "Б",
   "uni.KB": "КБ",
   "uni.MB": "МБ",
   "uni.GB": "ГБ",
-
   "env.sh.no_python": "!! Не найден Python 3.10+. Требуется >=3.10 (нужен для kurigram).",
   "env.sh.no_python_hint": "   Установи Python 3.10+ или задай путь: PYTHON=/path/to/python3.13",
-    "env.sh.rebuild_venv": "==> venv собран старым Python ({old}), удаляю и пересоздаю через {py}",
+  "env.sh.rebuild_venv": "==> venv собран старым Python ({old}), удаляю и пересоздаю через {py}",
   "env.sh.create_venv": "==> venv не найден, создаю: {venv} (через {py})",
   "env.sh.install_deps": "==> Устанавливаю зависимости из requirements.txt ...",
-
   "run.sh.config_env": "==> config.env: {path}",
   "run.sh.cfg_missing": "!! config.env не найден ни в одном из двух мест:",
   "run.sh.cfg_missing_copy": "   Скопируй пример и заполни секреты:",
@@ -156,9 +146,7 @@
   "run.sh.launching": "==> Запускаю бота (v{ver})...",
   "run.sh.keep_awake_empty": "KEEP_AWAKE включено, но KEEP_AWAKE_COMMAND пусто — задайте его в config.env (или отключите KEEP_AWAKE).",
   "setup.need_keep_awake_command": "KEEP_AWAKE включено — требуется непустой KEEP_AWAKE_COMMAND.",
-
   "setup.sh.launching": "==> Запускаю настройку (claude_tg_bot/setup.py)...",
-
   "attach.type_photo": "фото",
   "attach.type_video": "видео",
   "attach.type_video_note": "видеосообщение (кружок)",

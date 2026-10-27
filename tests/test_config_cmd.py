@@ -16,6 +16,7 @@ class TestConfigEditable(unittest.TestCase):
         self.assertTrue(config.is_config_key_editable("BOT_LANG"))
         self.assertTrue(config.is_config_key_editable("AGENT_GENDER"))
         self.assertTrue(config.is_config_key_editable("SANDBOX_COMMAND"))
+        self.assertTrue(config.is_config_key_editable("AUTH_CODE_MODE"))
 
     def test_case_insensitive(self):
         self.assertTrue(config.is_config_key_editable("bot_lang"))
@@ -81,6 +82,21 @@ class TestHandleConfig(unittest.IsolatedAsyncioTestCase):
         await commands._handle_config(object(), ["/config", "AGENT_GENDER=other"])
         # Bad value — the setting is unchanged, but the bot lists the allowed ones.
         self.assertTrue(any("male" in r for r in self.captured))
+
+    async def test_auth_code_mode_changes(self):
+        self.assertEqual(config.AUTH_CODE_MODE, "auto")
+        await commands._handle_config(object(), ["/config", "AUTH_CODE_MODE=call"])
+        self.assertEqual(config.AUTH_CODE_MODE, "call")
+        self.assertTrue(any("AUTH_CODE_MODE = call" in r for r in self.captured))
+        # Don't leak the global change into the rest of the suite.
+        config.AUTH_CODE_MODE = "auto"
+
+    async def test_auth_code_mode_invalid(self):
+        # An invalid value leaves the setting unchanged and lists the allowed ones.
+        before = config.AUTH_CODE_MODE
+        await commands._handle_config(object(), ["/config", "AUTH_CODE_MODE=email"])
+        self.assertEqual(config.AUTH_CODE_MODE, before)
+        self.assertTrue(any("auto" in r and "sms" in r and "call" in r for r in self.captured))
 
 
 if __name__ == "__main__":

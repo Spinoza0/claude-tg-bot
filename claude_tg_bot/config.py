@@ -297,6 +297,15 @@ _AGENT_GENDER = (os.getenv("AGENT_GENDER") or "").strip().lower()
 AGENT_GENDER: str = _AGENT_GENDER if _AGENT_GENDER in {"male", "female"} else "male"
 
 
+# How to request the Telegram login code ('auto' | 'sms' | 'call'). 'auto' lets
+# Telegram pick the channel itself; 'sms' forces an SMS; 'call' allows a call
+# that dictates the code. A userbot never receives an app-delivered code, so
+# 'auto' can leave the login stuck on SentCodeTypeApp — 'sms'/'call' prefer a
+# channel the user can actually read.
+_AUTH_CODE_MODE = (os.getenv("AUTH_CODE_MODE") or "").strip().lower()
+AUTH_CODE_MODE: str = _AUTH_CODE_MODE if _AUTH_CODE_MODE in {"auto", "sms", "call"} else "auto"
+
+
 def write_config_value(key: str, value: str) -> bool:
     """Persist ``KEY=value`` into the resolved config.env (if found).
 
@@ -340,7 +349,7 @@ def set_config_value(key: str, value: str) -> bool:
 # immediately (live, no restart) and are safe to tweak from a chat. Any other
 # key in /config is rejected as unknown — it stays on the blacklist implicitly.
 EDITABLE_CONFIG_KEYS = frozenset({
-    "BOT_LANG", "AGENT_GENDER", "SANDBOX_COMMAND",
+    "BOT_LANG", "AGENT_GENDER", "SANDBOX_COMMAND", "AUTH_CODE_MODE",
 })
 
 

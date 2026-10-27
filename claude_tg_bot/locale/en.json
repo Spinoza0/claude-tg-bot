@@ -30,12 +30,12 @@
   "cmd.permanent": "permanently",
   "cmd.name_not_selected": "(not selected)",
   "cmd.config_current": "⚙️ Editable settings (use /config KEY=VALUE):",
+  "cmd.config_auth_mode_values": "AUTH_CODE_MODE: auto (Telegram decides), sms, call",
   "cmd.config_done": "✅ Settings updated:",
   "cmd.config_changed": "• {setting} = {value}",
   "cmd.config_unknown": "❓ Unknown or non-editable setting '{setting}'. Editable: {allowed}",
   "cmd.config_invalid": "⚠️ Invalid value for '{setting}': {value}. Allowed: {allowed}",
   "cmd.config_invalid_sandbox": "⚠️ Invalid sandbox codeword '{value}'. It must not be empty, start with '/', or match a reserved bot command.",
-
   "handlers.sandbox_create_fail": "⚠️ Could not create the sandbox folder: {path}",
   "handlers.no_project": "No active project. Choose: /list or /new <name>",
   "handlers.busy": "Thinking...",
@@ -56,7 +56,6 @@
   "handlers.select_project": "First choose a project: /list or /new <name>",
   "handlers.download_fail": "Could not download {kind}: {e}",
   "handlers.unknown_attach": "🤖 I can't process: {kind}.",
-
   "runner.dir_not_exists": "Directory does not exist: {path}",
   "runner.prompt_too_long": "Prompt is too long ({len} characters)",
   "runner.files_attached": "\n\nFiles (attached): {refs}",
@@ -64,7 +63,6 @@
   "runner.timeout_diag": "\n\n(diagnostics: {tail})",
   "runner.run_error": "⚠️ Claude launch error (code {code}):\n{tail}",
   "runner.command_hint": "📖 Available commands:\n/start — start and choose a project\n/list — list available projects\n/switch <name> — switch to a project\n/new [name] — create a new project\n/status — current project and session\n/config KEY=VALUE ... — change a live setting; with no args — show the editable ones\n/clear — first automatically call /clearattach (clean attachments), then send to Claude (reset context)\n/clearattach — delete downloaded attachments of the current project ({where})\n/attachsize — show the number and size of downloaded attachments\n/kill — kill hung Claude sessions started by the bot\n{sandbox_cmd} <command/text> — work in the sandbox in any chat (SANDBOX_ROOT)\n/help — this help",
-
   "status.working": "Working",
   "status.working_ok": "🟢 Working",
   "status.error": "❌ Error: {err}",
@@ -72,7 +70,6 @@
   "status.err_no_network": "No network access — cannot resolve host",
   "status.err_no_connection": "No connection to Telegram",
   "status.err_temp_telegram": "Temporary Telegram error (internal / inter-DC)",
-
   "client.connect_retry": "{friendly}. Retrying in {mins} min ({attempt}/{limit})...",
   "client.connect_stall": "Telegram connection hung over {secs}s (proxy/network not answering). Retrying ({attempt}/{limit})...",
   "client.connect_stall_last": "Telegram connection hung repeatedly — the proxy or network is not answering",
@@ -90,10 +87,8 @@
   "client.no_proxy": "⚠ Proxy is ignored (--no-proxy): connecting to Telegram directly.",
   "client.running": "✅ Bot is running and working. Waiting for Telegram messages.",
   "client.stop_hint": "   To stop, press Ctrl+C in this window (SIGINT).",
-
   "process.already_starting": "⚠️  Bot is already starting (lock-file {name}). Second instance is not started.",
   "process.already_running": "⚠️  Bot is already running (pid {pids}). Second instance is not started.",
-
   "config.cfg_missing": "config.env not found in any location. Put it in one of the folders:\n  {candidates}\n  (template: cp config.env.example config.env)",
   "config.api_id_missing": "API_ID is not set (get it at https://my.telegram.org/apps)",
   "config.api_hash_missing": "API_HASH is not set (get it at https://my.telegram.org/apps)",
@@ -103,7 +98,6 @@
   "config.warn_chats": "ALLOWED_CHAT_IDS is empty — the bot only answers in Saved Messages, not in groups. If you need another/multiple chats, write the ids in ALLOWED_CHAT_IDS (see README).",
   "config.validation_error": "Configuration error:\n  {problems}",
   "config.warning": "⚠️  Warning:\n  {warnings}",
-
   "setup.title": "Setting up claude-tg-bot.",
   "setup.existing": "Found existing {path}. I'll edit it (Enter — keep the current value).",
   "setup.new": "I'll create a new {path}.",
@@ -124,22 +118,18 @@
   "setup.done1": "\nDone. Next:",
   "setup.done2": "  1. Run: ./claude-tg-bot",
   "setup.done3": "  2. On first login the MTProto client will ask for a confirmation code from Telegram.",
-
   "log.found_old": "⚠️ Old logs found ({n} file(s) in {path}).",
   "log.ask_delete": "Delete them? [y/N] (default: do NOT delete): ",
   "log.deleted": "Deleted {n} log file(s).",
-
   "uni.B": "B",
   "uni.KB": "KB",
   "uni.MB": "MB",
   "uni.GB": "GB",
-
   "env.sh.no_python": "!! Python 3.10+ not found. Requires >=3.10 (needed for kurigram).",
   "env.sh.no_python_hint": "   Install Python 3.10+ or set the path: PYTHON=/path/to/python3.13",
-    "env.sh.rebuild_venv": "==> venv built with old Python ({old}), deleting and recreating via {py}",
+  "env.sh.rebuild_venv": "==> venv built with old Python ({old}), deleting and recreating via {py}",
   "env.sh.create_venv": "==> venv not found, creating: {venv} (via {py})",
   "env.sh.install_deps": "==> Installing dependencies from requirements.txt ...",
-
   "run.sh.config_env": "==> config.env: {path}",
   "run.sh.cfg_missing": "!! config.env not found in either location:",
   "run.sh.cfg_missing_copy": "   Copy the example and fill in the secrets:",
@@ -156,9 +146,7 @@
   "run.sh.launching": "==> Launching bot (v{ver})...",
   "run.sh.keep_awake_empty": "KEEP_AWAKE is enabled but KEEP_AWAKE_COMMAND is empty — set it in config.env (or disable KEEP_AWAKE).",
   "setup.need_keep_awake_command": "KEEP_AWAKE is on — a non-empty KEEP_AWAKE_COMMAND is required.",
-
   "setup.sh.launching": "==> Running setup (claude_tg_bot/setup.py)...",
-
   "attach.type_photo": "photo",
   "attach.type_video": "video",
   "attach.type_video_note": "video message (circle)",

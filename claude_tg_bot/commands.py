@@ -151,10 +151,11 @@ async def _handle_config(message, parts: list[str]):
     """/config key=value ... — change bot settings live (plain messages only).
 
     Only the editable settings (config.EDITABLE_CONFIG_KEYS) are accepted:
-    BOT_LANG, AGENT_GENDER, SANDBOX_COMMAND. Keys are matched case-insensitively
-    and must be the full setting name (no aliases); any other key is reported as
-    unknown and skipped. A known key with a bad value is left unchanged with the
-    allowed list. No args — show the editable settings and their current values.
+    BOT_LANG, AGENT_GENDER, SANDBOX_COMMAND, AUTH_CODE_MODE. Keys are matched
+    case-insensitively and must be the full setting name (no aliases); any other
+    key is reported as unknown and skipped. A known key with a bad value is left
+    unchanged with the allowed list. No args — show the editable settings and
+    their current values.
     """
     # The message text is split on spaces before reaching here, so "KEY = VALUE"
     # arrives as ["KEY", "=", "VALUE"]. Strip spaces around '=' so both
@@ -173,8 +174,10 @@ async def _handle_config(message, parts: list[str]):
             "BOT_LANG": i18n.current_lang(),
             "AGENT_GENDER": config.AGENT_GENDER,
             "SANDBOX_COMMAND": config.SANDBOX_COMMAND,
+            "AUTH_CODE_MODE": config.AUTH_CODE_MODE,
         }
         body = "\n".join(f"{k} = {v}" for k, v in values.items())
+        body += "\n" + i18n.t("cmd.config_auth_mode_values")
         await _reply(message, i18n.t("cmd.config_current") + "\n" + body)
         return
 
@@ -210,6 +213,14 @@ async def _handle_config(message, parts: list[str]):
             config.set_config_value("SANDBOX_COMMAND", code)
             # The sandbox trigger is read at import time; refresh it live.
             sandbox.SANDBOX_PREFIX = config.SANDBOX_COMMAND
+            changes.append(i18n.t("cmd.config_changed", setting=key, value=code))
+        elif key == "AUTH_CODE_MODE":
+            code = value.strip().lower()
+            if code not in {"auto", "sms", "call"}:
+                reports.append(i18n.t("cmd.config_invalid", setting=key, value=value,
+                                      allowed="auto, sms, call"))
+                continue
+            config.set_config_value("AUTH_CODE_MODE", code)
             changes.append(i18n.t("cmd.config_changed", setting=key, value=code))
 
     if changes:
