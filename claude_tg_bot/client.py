@@ -2,13 +2,16 @@
 
 import asyncio
 import logging
-from types import MethodType
+import os
+import signal
 import sys
+from types import MethodType
 
 import pyrogram
 from pyrogram import Client, filters
 from pyrogram import raw
 from pyrogram.errors import AuthKeyUnregistered, SessionPasswordNeeded
+from pyrogram.types import PhoneNumberAuthenticationSettings
 
 from . import config, i18n
 from .log import log_filename, maybe_cleanup_old_logs, parse_no_proxy, parse_log_flag, setup_logging
@@ -52,15 +55,45 @@ from .status import (
 logger = logging.getLogger("claude_tg_bot")
 
 
+def _immediate_sigint_exit():
+    """Temporarily turn Ctrl+C into an instant exit while a login code is read.
+
+    Pyrogram's authorize() reads the code with ainput(), which runs input() in a
+    worker thread. A KeyboardInterrupt lands in the main loop but the worker stuck
+    on input() keeps asyncio.run() from finishing, so the first Ctrl+C appears to
+    do nothing and several presses are needed. Replacing the SIGINT handler with
+    a hard _exit() for the duration makes one Ctrl+C quit immediately.
+    """
+    class _Ctx:
+        def __enter__(self):
+            self._prev = signal.getsignal(signal.SIGINT)
+            signal.signal(signal.SIGINT, lambda *_: os._exit(130))
+            return self
+
+        def __exit__(self, *exc):
+            signal.signal(signal.SIGINT, self._prev)
+            return False
+
+    return _Ctx()
+
+
 async def _sms_first_send_phone_number_code(self, phone_number, *args, **kwargs):
     """Send a login code as SMS, not to a Telegram app on another device.
 
     By default Kurigram's send_phone_number_code uses an empty CodeSettings, so
     Telegram routes a login code to a Telegram app wherever the phone number
     already has an active session (SentCodeTypeApp) — a code the user often never
-    sees. Forcing current_number=False makes Telegram send it as an SMS instead.
+    sees. Forcing is_current_phone_number=False makes Telegram send it as an SMS
+    instead. The deprecated `current_number` kwarg is avoided in favour of the
+    settings object; a caller-supplied settings object is left untouched.
     """
-    kwargs.setdefault("current_number", False)
+    if "settings" not in kwargs:
+        kwargs["settings"] = PhoneNumberAuthenticationSettings(
+            is_current_phone_number=False,
+            allow_flash_call=False,
+            allow_missed_call=False,
+        )
+    kwargs.pop("current_number", None)
     return await Client.send_phone_number_code(self, phone_number, *args, **kwargs)
 
 
@@ -230,7 +263,11 @@ async def _start_with_retry(app, *, needs_auth: bool = False):
             # full-screen live region would otherwise swallow. Re-enter after.
             ui_close()
             try:
-                await app.start()
+                # While the code is read from stdin, one Ctrl+C must quit the bot
+                # instantly, not stall on the input() worker thread (see
+                # _immediate_sigint_exit) — otherwise it takes several presses.
+                with _immediate_sigint_exit():
+                    await app.start()
             finally:
                 ui_init()
         else:
