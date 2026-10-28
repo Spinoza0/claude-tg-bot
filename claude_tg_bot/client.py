@@ -78,20 +78,22 @@ def _immediate_sigint_exit():
 
 
 async def _sms_first_send_phone_number_code(self, phone_number, *args, **kwargs):
-    """Send a login code as SMS, not to a Telegram app on another device.
+    """Request a deliverable login code channel based on config.AUTH_CODE_MODE.
 
-    By default Kurigram's send_phone_number_code uses an empty CodeSettings, so
-    Telegram routes a login code to a Telegram app wherever the phone number
-    already has an active session (SentCodeTypeApp) — a code the user often never
-    sees. Forcing is_current_phone_number=False makes Telegram send it as an SMS
-    instead. The deprecated `current_number` kwarg is avoided in favour of the
-    settings object; a caller-supplied settings object is left untouched.
+    Kurigram's default send_phone_number_code uses an empty CodeSettings, so
+    Telegram routes the login code to a Telegram app wherever the phone number
+    already has an active session (SentCodeTypeApp). A userbot never receives
+    that app code — only a "login attempt" notice shows up. AUTH_CODE_MODE=auto
+    (default) leaves it as-is; sms forces an SMS and call allows a call that
+    dictates the code, so one of them is actually deliverable. A caller-supplied
+    settings object is left untouched.
     """
-    if "settings" not in kwargs:
+    mode = config.AUTH_CODE_MODE
+    if mode != "auto" and "settings" not in kwargs:
         kwargs["settings"] = PhoneNumberAuthenticationSettings(
             is_current_phone_number=False,
             allow_flash_call=False,
-            allow_missed_call=False,
+            allow_missed_call=(mode == "call"),
         )
     kwargs.pop("current_number", None)
     return await Client.send_phone_number_code(self, phone_number, *args, **kwargs)
@@ -136,9 +138,8 @@ def _build_client(use_proxy: bool = True) -> Client:
         # timeout.
         workers=1,
     )
-    # By default Telegram sends a login code to a Telegram app when the phone
-    # number has an active session elsewhere, which the user may never see. Force
-    # current_number=False so the code comes as an SMS instead.
+    # A userbot never receives a Telegram-app login code, so let
+    # send_phone_number_code pick a deliverable channel per AUTH_CODE_MODE.
     client.send_phone_number_code = MethodType(
         _sms_first_send_phone_number_code, client
     )
